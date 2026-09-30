@@ -17,7 +17,7 @@
 #include <stan/math/prim/fun/square.hpp>
 #include <stan/math/prim/fun/to_ref.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <cmath>
 
 namespace stan {
@@ -56,16 +56,14 @@ template <bool propto, typename T_y, typename T_dof, typename T_loc,
           typename T_scale,
           require_all_not_nonscalar_prim_or_rev_kernel_expression_t<
               T_y, T_dof, T_loc, T_scale>* = nullptr>
-return_type_t<T_y, T_dof, T_loc, T_scale> student_t_lpdf(const T_y& y,
-                                                         const T_dof& nu,
-                                                         const T_loc& mu,
-                                                         const T_scale& sigma) {
+inline return_type_t<T_y, T_dof, T_loc, T_scale> student_t_lpdf(
+    const T_y& y, const T_dof& nu, const T_loc& mu, const T_scale& sigma) {
   using T_partials_return = partials_return_t<T_y, T_dof, T_loc, T_scale>;
-  using T_y_ref = ref_type_if_t<!is_constant<T_y>::value, T_y>;
-  using T_nu_ref = ref_type_if_t<!is_constant<T_dof>::value, T_dof>;
-  using T_mu_ref = ref_type_if_t<!is_constant<T_loc>::value, T_loc>;
-  using T_sigma_ref = ref_type_if_t<!is_constant<T_scale>::value, T_scale>;
-  static const char* function = "student_t_lpdf";
+  using T_y_ref = ref_type_if_not_constant_t<T_y>;
+  using T_nu_ref = ref_type_if_not_constant_t<T_dof>;
+  using T_mu_ref = ref_type_if_not_constant_t<T_loc>;
+  using T_sigma_ref = ref_type_if_not_constant_t<T_scale>;
+  static constexpr const char* function = "student_t_lpdf";
   check_consistent_sizes(function, "Random variable", y,
                          "Degrees of freedom parameter", nu,
                          "Location parameter", mu, "Scale parameter", sigma);
@@ -87,64 +85,64 @@ return_type_t<T_y, T_dof, T_loc, T_scale> student_t_lpdf(const T_y& y,
   if (size_zero(y, nu, mu, sigma)) {
     return 0.0;
   }
-  if (!include_summand<propto, T_y, T_dof, T_loc, T_scale>::value) {
+  if constexpr (!include_summand<propto, T_y, T_dof, T_loc, T_scale>::value) {
     return 0.0;
   }
 
-  operands_and_partials<T_y_ref, T_nu_ref, T_mu_ref, T_sigma_ref> ops_partials(
-      y_ref, nu_ref, mu_ref, sigma_ref);
+  auto ops_partials
+      = make_partials_propagator(y_ref, nu_ref, mu_ref, sigma_ref);
 
   const auto& half_nu
       = to_ref_if<include_summand<propto, T_dof>::value>(0.5 * nu_val);
   const auto& square_y_scaled = square((y_val - mu_val) / sigma_val);
   const auto& square_y_scaled_over_nu
-      = to_ref_if<!is_constant_all<T_y, T_dof, T_loc, T_scale>::value>(
-          square_y_scaled / nu_val);
-  const auto& log1p_val = to_ref_if<!is_constant_all<T_dof>::value>(
-      log1p(square_y_scaled_over_nu));
+      = to_ref_if<is_any_autodiff_v<T_y, T_dof, T_loc, T_scale>>(square_y_scaled
+                                                                 / nu_val);
+  const auto& log1p_val
+      = to_ref_if<is_autodiff_v<T_dof>>(log1p(square_y_scaled_over_nu));
 
   size_t N = max_size(y, nu, mu, sigma);
   T_partials_return logp = -sum((half_nu + 0.5) * log1p_val);
-  if (include_summand<propto>::value) {
+  if constexpr (include_summand<propto>::value) {
     logp -= LOG_SQRT_PI * N;
   }
-  if (include_summand<propto, T_dof>::value) {
+  if constexpr (include_summand<propto, T_dof>::value) {
     logp += (sum(lgamma(half_nu + 0.5)) - sum(lgamma(half_nu))
              - 0.5 * sum(log(nu_val)))
-            * N / size(nu);
+            * N / math::size(nu);
   }
-  if (include_summand<propto, T_scale>::value) {
-    logp -= sum(log(sigma_val)) * N / size(sigma);
+  if constexpr (include_summand<propto, T_scale>::value) {
+    logp -= sum(log(sigma_val)) * N / math::size(sigma);
   }
 
-  if (!is_constant_all<T_y, T_loc>::value) {
+  if constexpr (is_any_autodiff_v<T_y, T_loc>) {
     const auto& square_sigma = square(sigma_val);
-    auto deriv_y_mu = to_ref_if<(!is_constant_all<T_y>::value
-                                 && !is_constant_all<T_loc>::value)>(
+    auto deriv_y_mu = to_ref_if<(is_autodiff_v<T_y> && is_autodiff_v<T_loc>)>(
         (nu_val + 1) * (y_val - mu_val)
         / ((1 + square_y_scaled_over_nu) * square_sigma * nu_val));
-    if (!is_constant_all<T_y>::value) {
-      ops_partials.edge1_.partials_ = -deriv_y_mu;
+    if constexpr (is_autodiff_v<T_y>) {
+      partials<0>(ops_partials) = -deriv_y_mu;
     }
-    if (!is_constant_all<T_loc>::value) {
-      ops_partials.edge3_.partials_ = std::move(deriv_y_mu);
+    if constexpr (is_autodiff_v<T_loc>) {
+      partials<2>(ops_partials) = std::move(deriv_y_mu);
     }
   }
-  if (!is_constant_all<T_dof, T_scale>::value) {
-    const auto& rep_deriv = to_ref_if<(!is_constant_all<T_dof>::value
-                                       && !is_constant_all<T_scale>::value)>(
-        (nu_val + 1) * square_y_scaled_over_nu / (1 + square_y_scaled_over_nu)
-        - 1);
-    if (!is_constant_all<T_dof>::value) {
+  if constexpr (is_any_autodiff_v<T_dof, T_scale>) {
+    const auto& rep_deriv
+        = to_ref_if<(is_autodiff_v<T_dof> && is_autodiff_v<T_scale>)>(
+            (nu_val + 1) * square_y_scaled_over_nu
+                / (1 + square_y_scaled_over_nu)
+            - 1);
+    if constexpr (is_autodiff_v<T_dof>) {
       const auto& digamma_half_nu_plus_half = digamma(half_nu + 0.5);
       const auto& digamma_half_nu = digamma(half_nu);
-      ops_partials.edge2_.partials_
+      edge<1>(ops_partials).partials_
           = 0.5
             * (digamma_half_nu_plus_half - digamma_half_nu - log1p_val
                + rep_deriv / nu_val);
     }
-    if (!is_constant_all<T_scale>::value) {
-      ops_partials.edge4_.partials_ = rep_deriv / sigma_val;
+    if constexpr (is_autodiff_v<T_scale>) {
+      partials<3>(ops_partials) = rep_deriv / sigma_val;
     }
   }
   return ops_partials.build(logp);

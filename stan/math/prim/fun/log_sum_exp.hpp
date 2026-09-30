@@ -5,6 +5,7 @@
 #include <stan/math/prim/fun/constants.hpp>
 #include <stan/math/prim/fun/Eigen.hpp>
 #include <stan/math/prim/fun/log1p_exp.hpp>
+#include <stan/math/prim/functor/apply_scalar_binary.hpp>
 #include <cmath>
 #include <vector>
 
@@ -47,7 +48,8 @@ namespace math {
  * @param a the first variable
  * @param b the second variable
  */
-template <typename T1, typename T2, require_all_not_st_var<T1, T2>* = nullptr>
+template <typename T1, typename T2, require_all_not_st_var<T1, T2>* = nullptr,
+          require_all_stan_scalar_t<T1, T2>* = nullptr>
 inline return_type_t<T1, T2> log_sum_exp(const T2& a, const T1& b) {
   if (a == NEGATIVE_INFTY) {
     return b;
@@ -77,8 +79,8 @@ inline return_type_t<T1, T2> log_sum_exp(const T2& a, const T1& b) {
  * @return The log of the sum of the exponentiated vector values.
  */
 template <typename T, require_container_st<std::is_arithmetic, T>* = nullptr>
-inline auto log_sum_exp(const T& x) {
-  return apply_vector_unary<T>::reduce(x, [&](const auto& v) {
+inline auto log_sum_exp(T&& x) {
+  return apply_vector_unary<T>::reduce(std::forward<T>(x), [](auto&& v) {
     if (v.size() == 0) {
       return NEGATIVE_INFTY;
     }
@@ -89,6 +91,26 @@ inline auto log_sum_exp(const T& x) {
     }
     return max + std::log((v_ref.array() - max).exp().sum());
   });
+}
+
+/**
+ * Enables the vectorized application of the log_sum_exp function,
+ * when the first and/or second arguments are containers.
+ *
+ * @tparam T1 type of first input
+ * @tparam T2 type of second input
+ * @param a First input
+ * @param b Second input
+ * @return log_sum_exp function applied to the two inputs.
+ */
+template <typename T1, typename T2, require_any_container_t<T1, T2>* = nullptr>
+inline auto log_sum_exp(T1&& a, T2&& b) {
+  return apply_scalar_binary(
+      [](auto&& c, auto&& d) {
+        return log_sum_exp(std::forward<decltype(c)>(c),
+                           std::forward<decltype(d)>(d));
+      },
+      std::forward<T1>(a), std::forward<T2>(b));
 }
 
 }  // namespace math

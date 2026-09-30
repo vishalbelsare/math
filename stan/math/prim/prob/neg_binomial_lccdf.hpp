@@ -16,7 +16,7 @@
 #include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/square.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <cmath>
 #include <limits>
 
@@ -24,7 +24,7 @@ namespace stan {
 namespace math {
 
 template <typename T_n, typename T_shape, typename T_inv_scale>
-return_type_t<T_shape, T_inv_scale> neg_binomial_lccdf(
+inline return_type_t<T_shape, T_inv_scale> neg_binomial_lccdf(
     const T_n& n, const T_shape& alpha, const T_inv_scale& beta_param) {
   using T_partials_return = partials_return_t<T_n, T_shape, T_inv_scale>;
   using std::exp;
@@ -32,7 +32,7 @@ return_type_t<T_shape, T_inv_scale> neg_binomial_lccdf(
   using std::pow;
   using T_alpha_ref = ref_type_t<T_shape>;
   using T_beta_ref = ref_type_t<T_inv_scale>;
-  static const char* function = "neg_binomial_lccdf";
+  static constexpr const char* function = "neg_binomial_lccdf";
   check_consistent_sizes(function, "Failures variable", n, "Shape parameter",
                          alpha, "Inverse scale parameter", beta_param);
 
@@ -47,8 +47,7 @@ return_type_t<T_shape, T_inv_scale> neg_binomial_lccdf(
   }
 
   T_partials_return P(0.0);
-  operands_and_partials<T_alpha_ref, T_beta_ref> ops_partials(alpha_ref,
-                                                              beta_ref);
+  auto ops_partials = make_partials_propagator(alpha_ref, beta_ref);
 
   scalar_seq_view<T_n> n_vec(n);
   scalar_seq_view<T_alpha_ref> alpha_vec(alpha_ref);
@@ -66,15 +65,14 @@ return_type_t<T_shape, T_inv_scale> neg_binomial_lccdf(
     }
   }
 
-  VectorBuilder<!is_constant_all<T_shape>::value, T_partials_return, T_n>
-      digammaN_vec(size_n);
-  VectorBuilder<!is_constant_all<T_shape>::value, T_partials_return, T_shape>
+  VectorBuilder<is_autodiff_v<T_shape>, T_partials_return, T_n> digammaN_vec(
+      size_n);
+  VectorBuilder<is_autodiff_v<T_shape>, T_partials_return, T_shape>
       digammaAlpha_vec(size_alpha);
-  VectorBuilder<!is_constant_all<T_shape>::value, T_partials_return, T_n,
-                T_shape>
+  VectorBuilder<is_autodiff_v<T_shape>, T_partials_return, T_n, T_shape>
       digammaSum_vec(size_n_alpha);
 
-  if (!is_constant_all<T_shape>::value) {
+  if constexpr (is_autodiff_v<T_shape>) {
     for (size_t i = 0; i < size_n; i++) {
       digammaN_vec[i] = digamma(n_vec.val(i) + 1);
     }
@@ -106,19 +104,19 @@ return_type_t<T_shape, T_inv_scale> neg_binomial_lccdf(
 
     P += log(Pi);
 
-    if (!is_constant_all<T_shape>::value) {
+    if constexpr (is_autodiff_v<T_shape>) {
       T_partials_return g1 = 0;
       T_partials_return g2 = 0;
 
       grad_reg_inc_beta(g1, g2, alpha_dbl, n_dbl + 1, p_dbl,
                         digammaAlpha_vec[i], digammaN_vec[i], digammaSum_vec[i],
                         beta_func);
-      ops_partials.edge1_.partials_[i] -= g1 / Pi;
+      partials<0>(ops_partials)[i] -= g1 / Pi;
     }
-    if (!is_constant_all<T_inv_scale>::value) {
-      ops_partials.edge2_.partials_[i] -= d_dbl * pow(1 - p_dbl, n_dbl)
-                                          * pow(p_dbl, alpha_dbl - 1)
-                                          / (beta_func * Pi);
+    if constexpr (is_autodiff_v<T_inv_scale>) {
+      partials<1>(ops_partials)[i] -= d_dbl * pow(1 - p_dbl, n_dbl)
+                                      * pow(p_dbl, alpha_dbl - 1)
+                                      / (beta_func * Pi);
     }
   }
 

@@ -13,7 +13,7 @@
 #include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/to_ref.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <cmath>
 
 namespace stan {
@@ -44,13 +44,14 @@ namespace math {
 template <bool propto, typename T_y, typename T_low, typename T_high,
           require_all_not_nonscalar_prim_or_rev_kernel_expression_t<
               T_y, T_low, T_high>* = nullptr>
-return_type_t<T_y, T_low, T_high> uniform_lpdf(const T_y& y, const T_low& alpha,
-                                               const T_high& beta) {
+inline return_type_t<T_y, T_low, T_high> uniform_lpdf(const T_y& y,
+                                                      const T_low& alpha,
+                                                      const T_high& beta) {
   using T_partials_return = partials_return_t<T_y, T_low, T_high>;
-  using T_y_ref = ref_type_if_t<!is_constant<T_y>::value, T_y>;
-  using T_alpha_ref = ref_type_if_t<!is_constant<T_low>::value, T_low>;
-  using T_beta_ref = ref_type_if_t<!is_constant<T_high>::value, T_high>;
-  static const char* function = "uniform_lpdf";
+  using T_y_ref = ref_type_if_not_constant_t<T_y>;
+  using T_alpha_ref = ref_type_if_not_constant_t<T_low>;
+  using T_beta_ref = ref_type_if_not_constant_t<T_high>;
+  static constexpr const char* function = "uniform_lpdf";
   check_consistent_sizes(function, "Random variable", y,
                          "Lower bound parameter", alpha,
                          "Upper bound parameter", beta);
@@ -71,7 +72,7 @@ return_type_t<T_y, T_low, T_high> uniform_lpdf(const T_y& y, const T_low& alpha,
   if (size_zero(y, alpha, beta)) {
     return 0.0;
   }
-  if (!include_summand<propto, T_y, T_low, T_high>::value) {
+  if constexpr (!include_summand<propto, T_y, T_low, T_high>::value) {
     return 0.0;
   }
   if (sum(promote_scalar<int>(y_val < alpha_val))
@@ -81,31 +82,30 @@ return_type_t<T_y, T_low, T_high> uniform_lpdf(const T_y& y, const T_low& alpha,
 
   T_partials_return logp = 0;
   size_t N = max_size(y, alpha, beta);
-  if (include_summand<propto, T_low, T_high>::value) {
+  if constexpr (include_summand<propto, T_low, T_high>::value) {
     logp -= sum(log(beta_val - alpha_val)) * N / max_size(alpha, beta);
   }
 
-  operands_and_partials<T_y_ref, T_alpha_ref, T_beta_ref> ops_partials(
-      y_ref, alpha_ref, beta_ref);
+  auto ops_partials = make_partials_propagator(y_ref, alpha_ref, beta_ref);
 
-  if (!is_constant_all<T_low, T_high>::value) {
-    auto inv_beta_minus_alpha = to_ref_if<(!is_constant_all<T_high>::value
-                                           && !is_constant_all<T_low>::value)>(
-        inv(beta_val - alpha_val));
-    if (!is_constant_all<T_high>::value) {
-      if (is_vector<T_y>::value && !is_vector<T_low>::value
-          && !is_vector<T_high>::value) {
-        ops_partials.edge3_.partials_ = -inv_beta_minus_alpha * size(y);
+  if constexpr (is_any_autodiff_v<T_low, T_high>) {
+    auto inv_beta_minus_alpha
+        = to_ref_if<(is_autodiff_v<T_high> && is_autodiff_v<T_low>)>(
+            inv(beta_val - alpha_val));
+    if constexpr (is_autodiff_v<T_high>) {
+      if constexpr (is_vector<T_y>::value && !is_vector<T_low>::value
+                    && !is_vector<T_high>::value) {
+        partials<2>(ops_partials) = -inv_beta_minus_alpha * math::size(y);
       } else {
-        ops_partials.edge3_.partials_ = -inv_beta_minus_alpha;
+        partials<2>(ops_partials) = -inv_beta_minus_alpha;
       }
     }
-    if (!is_constant_all<T_low>::value) {
-      if (is_vector<T_y>::value && !is_vector<T_low>::value
-          && !is_vector<T_high>::value) {
-        ops_partials.edge2_.partials_ = inv_beta_minus_alpha * size(y);
+    if constexpr (is_autodiff_v<T_low>) {
+      if constexpr (is_vector<T_y>::value && !is_vector<T_low>::value
+                    && !is_vector<T_high>::value) {
+        partials<1>(ops_partials) = inv_beta_minus_alpha * math::size(y);
       } else {
-        ops_partials.edge2_.partials_ = std::move(inv_beta_minus_alpha);
+        partials<1>(ops_partials) = std::move(inv_beta_minus_alpha);
       }
     }
   }

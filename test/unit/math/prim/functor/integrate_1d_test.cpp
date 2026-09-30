@@ -214,8 +214,8 @@ struct f17 {
   }
 };
 
-double lbaX_pdf(double X, double t, double A, double v, double s,
-                std::ostream *pstream__) {
+inline double lbaX_pdf(double X, double t, double A, double v, double s,
+                       std::ostream *pstream__) {
   double b_A_tv_ts;
   double b_tv_ts;
   double term_1;
@@ -230,8 +230,8 @@ double lbaX_pdf(double X, double t, double A, double v, double s,
   return pdf;
 }
 
-double lbaX_cdf(double X, double t, double A, double v, double s,
-                std::ostream *pstream__) {
+inline double lbaX_cdf(double X, double t, double A, double v, double s,
+                       std::ostream *pstream__) {
   double b_A_tv;
   double b_tv;
   double ts;
@@ -248,7 +248,7 @@ double lbaX_cdf(double X, double t, double A, double v, double s,
   term_2 = (b_tv * stan::math::Phi((b_tv / ts)));
   term_3 = (ts
             * stan::math::exp(
-                  stan::math::normal_lpdf<false>((b_A_tv / ts), 0, 1)));
+                stan::math::normal_lpdf<false>((b_A_tv / ts), 0, 1)));
   term_4
       = (ts
          * stan::math::exp(stan::math::normal_lpdf<false>((b_tv / ts), 0, 1)));
@@ -256,9 +256,11 @@ double lbaX_cdf(double X, double t, double A, double v, double s,
   return cdf;
 }
 
-double rank_density(double x, double xc, const std::vector<double> &theta,
-                    const std::vector<double> &x_r, const std::vector<int> &x_i,
-                    std::ostream *pstream__) {
+inline double rank_density(double x, double xc,
+                           const std::vector<double> &theta,
+                           const std::vector<double> &x_r,
+                           const std::vector<int> &x_i,
+                           std::ostream *pstream__) {
   double t = theta[0];
   double A = theta[1];
   double v1 = theta[2];
@@ -277,8 +279,8 @@ struct rank_density_functor__ {
   }
 };
 
-double order(double down, double up, const std::vector<double> &theta,
-             const std::vector<double> &x_r, std::ostream *pstream__) {
+inline double order(double down, double up, const std::vector<double> &theta,
+                    const std::vector<double> &x_r, std::ostream *pstream__) {
   std::vector<int> x_i;
 
   double v;
@@ -315,10 +317,10 @@ double order(double down, double up, const std::vector<double> &theta,
  * @param val correct value of integral
  */
 template <typename F>
-void test_integration(const F &f, double a, double b,
-                      std::vector<double> thetas,
-                      const std::vector<double> &x_r,
-                      const std::vector<int> &x_i, double val) {
+inline void test_integration(const F &f, double a, double b,
+                             std::vector<double> thetas,
+                             const std::vector<double> &x_r,
+                             const std::vector<int> &x_i, double val) {
   using stan::math::integrate_1d;
 
   std::vector<double> tolerances = {1e-4, 1e-6, 1e-8};
@@ -402,16 +404,15 @@ TEST(StanMath_integrate_1d_prim, TestThrows) {
 }
 
 TEST(StanMath_integrate_1d_prim, test_integer_arguments) {
-  double v;
-  EXPECT_NO_THROW(v = stan::math::integrate_1d(integrate_1d_test::f2{}, 0, 1,
-                                               std::vector<double>(), {}, {},
-                                               integrate_1d_test::msgs, 1e-6));
-  EXPECT_NO_THROW(v = stan::math::integrate_1d(integrate_1d_test::f2{}, 0.0, 1,
-                                               std::vector<double>(), {}, {},
-                                               integrate_1d_test::msgs, 1e-6));
-  EXPECT_NO_THROW(v = stan::math::integrate_1d(integrate_1d_test::f2{}, 0, 1.0,
-                                               std::vector<double>(), {}, {},
-                                               integrate_1d_test::msgs, 1e-6));
+  EXPECT_NO_THROW(stan::math::integrate_1d(integrate_1d_test::f2{}, 0, 1,
+                                           std::vector<double>(), {}, {},
+                                           integrate_1d_test::msgs, 1e-6));
+  EXPECT_NO_THROW(stan::math::integrate_1d(integrate_1d_test::f2{}, 0.0, 1,
+                                           std::vector<double>(), {}, {},
+                                           integrate_1d_test::msgs, 1e-6));
+  EXPECT_NO_THROW(stan::math::integrate_1d(integrate_1d_test::f2{}, 0, 1.0,
+                                           std::vector<double>(), {}, {},
+                                           integrate_1d_test::msgs, 1e-6));
 }
 
 TEST(StanMath_integrate_1d_prim, test1) {
@@ -489,7 +490,6 @@ TEST(StanMath_integrate_1d_prim, TestTolerance) {
   std::ostringstream *msgs = nullptr;
 
   double t = 0.5;
-  double b = 1.0;
   double A = 0.5;
   double v1 = 1.0;
   double v2 = 1.0;

@@ -5,6 +5,7 @@
 #include <stan/math/prim/err.hpp>
 #include <stan/math/prim/prob/exponential_rng.hpp>
 #include <stan/math/prim/fun/max_size.hpp>
+#include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/scalar_seq_view.hpp>
 #include <stan/math/prim/prob/normal_rng.hpp>
 #include <boost/random/normal_distribution.hpp>
@@ -39,13 +40,15 @@ template <typename T_loc, typename T_scale, typename T_inv_scale, class RNG>
 inline typename VectorBuilder<true, double, T_loc, T_scale, T_inv_scale>::type
 exp_mod_normal_rng(const T_loc& mu, const T_scale& sigma,
                    const T_inv_scale& lambda, RNG& rng) {
-  static const char* function = "exp_mod_normal_rng";
+  static constexpr const char* function = "exp_mod_normal_rng";
   using T_mu_ref = ref_type_t<T_loc>;
   using T_sigma_ref = ref_type_t<T_scale>;
   using T_lambda_ref = ref_type_t<T_inv_scale>;
   check_consistent_sizes(function, "Location parameter", mu, "Scale Parameter",
                          sigma, "Inv_scale Parameter", lambda);
-
+  // if (size_zero(mu, sigma, lambda)) {
+  //   return {};
+  // }
   T_mu_ref mu_ref = mu;
   T_sigma_ref sigma_ref = sigma;
   T_lambda_ref lambda_ref = lambda;

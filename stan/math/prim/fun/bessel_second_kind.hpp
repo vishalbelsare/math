@@ -43,7 +43,7 @@ inline T2 bessel_second_kind(int v, const T2 z) {
 }
 
 /**
- * Enables the vectorised application of the bessel second kind function, when
+ * Enables the vectorized application of the bessel second kind function, when
  * the first and/or second arguments are containers.
  *
  * @tparam T1 type of first input
@@ -52,11 +52,15 @@ inline T2 bessel_second_kind(int v, const T2 z) {
  * @param b Second input
  * @return Bessel second kind function applied to the two inputs.
  */
-template <typename T1, typename T2, require_any_container_t<T1, T2>* = nullptr>
-inline auto bessel_second_kind(const T1& a, const T2& b) {
-  return apply_scalar_binary(a, b, [&](const auto& c, const auto& d) {
-    return bessel_second_kind(c, d);
-  });
+template <typename T1, typename T2, require_any_container_t<T1, T2>* = nullptr,
+          require_not_var_matrix_t<T2>* = nullptr>
+inline auto bessel_second_kind(T1&& a, T2&& b) {
+  return apply_scalar_binary(
+      [](auto&& c, auto&& d) {
+        return bessel_second_kind(std::forward<decltype(c)>(c),
+                                  std::forward<decltype(d)>(d));
+      },
+      std::forward<T1>(a), std::forward<T2>(b));
 }
 
 }  // namespace math

@@ -6,6 +6,7 @@
 #include <stan/math/opencl/ref_type.hpp>
 #include <stan/math/prim/meta.hpp>
 #include <stan/math/prim/err/check_matching_sizes.hpp>
+#include <stan/math/prim/err/check_nonzero_size.hpp>
 #include <stan/math/prim/fun/to_ref.hpp>
 
 namespace stan {
@@ -23,10 +24,10 @@ template <typename T,
 inline matrix_cl<double> softmax(const T& a) {
   check_vector("softmax (OpenCL)", "a", a);
   if (a.size() == 0) {
-    return a;
+    return matrix_cl<double>(a.rows(), a.cols());
   }
   matrix_cl<double> theta;
-  if (stan::internal::is_trivial_kg_expression<T>::value) {
+  if constexpr (stan::internal::is_trivial_kg_expression<T>::value) {
     matrix_cl<double> a_max = max_2d(a);
     theta = exp(a - from_matrix_cl(a_max).maxCoeff());
   } else {

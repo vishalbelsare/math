@@ -3,6 +3,7 @@
 
 #include <stan/math.hpp>
 #include <algorithm>
+#include <cmath>
 
 namespace stan {
 namespace test {
@@ -19,13 +20,13 @@ class relative_tolerance {
   /**
    * Construct with default tolerances
    */
-  relative_tolerance() : tol_(1e-8), tol_min_(1e-14) {}
+  constexpr relative_tolerance() : tol_(1e-8), tol_min_(1e-14) {}
 
   /**
    * Construct with default tol_min (max(tol_ * tol_, 1e-14))
    * @param tol_ the relative tolerance
    */
-  relative_tolerance(const double tol)  // NOLINT
+  constexpr relative_tolerance(const double tol)  // NOLINT
       : tol_(tol), tol_min_(std::max(tol * tol, 1e-14)) {}
 
   /**
@@ -33,21 +34,21 @@ class relative_tolerance {
    * @param[in] tol_ the relative tolerance
    * @param[in] tol_min_ the minimum absolute tolerance
    */
-  relative_tolerance(const double tol, const double tol_min)
+  constexpr relative_tolerance(const double tol, const double tol_min)
       : tol_(tol), tol_min_(tol_min) {}
 
-  double tol() const { return tol_; }
-  double tol_min() const { return tol_min_; }
+  constexpr double tol() const { return tol_; }
+  constexpr double tol_min() const { return tol_min_; }
 
-  relative_tolerance change_tol(double tol) const {
+  constexpr relative_tolerance change_tol(double tol) const {
     return relative_tolerance(tol, tol_min_);
   }
 
-  relative_tolerance change_tol_min(double tol_min) const {
+  constexpr relative_tolerance change_tol_min(double tol_min) const {
     return relative_tolerance(tol_, tol_min);
   }
 
-  relative_tolerance operator*(double a) const {
+  constexpr relative_tolerance operator*(double a) const {
     return relative_tolerance(a * tol_, a * tol_min_);
   }
 
@@ -78,6 +79,13 @@ class relative_tolerance {
     using stan::math::fabs;
     return std::max(tol_ * 0.5 * (fabs(x) + fabs(y)), tol_min_);
   }
+
+  /**
+   * Returns `true` if the tolerance is infinite.
+   *
+   * @return `true` if the tolernace is infinite.
+   */
+  bool is_inf() const { return std::isinf(tol_); }
 
  private:
   /**

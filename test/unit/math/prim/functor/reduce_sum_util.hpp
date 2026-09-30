@@ -11,7 +11,7 @@
 namespace stan {
 namespace math {
 namespace test {
-std::ostream* get_new_msg() {
+inline std::ostream* get_new_msg() {
   std::ostream* msgs = nullptr;
   return msgs;
 }
@@ -71,7 +71,7 @@ struct sum_lpdf {
     return sum_(sub_slice)
            + sub_slice.size()
                  * stan::math::sum(std::vector<return_type>{
-                       return_type(sum_(std::forward<Args>(args)))...});
+                     return_type(sum_(std::forward<Args>(args)))...});
   }
 };
 
@@ -147,7 +147,7 @@ struct grouped_count_lpdf {
 };
 
 template <typename T1, typename T2, typename... Args>
-void test_slices(T1 result, T2&& vec_value, Args&&... args) {
+inline void test_slices(T1 result, T2&& vec_value, Args&&... args) {
   using stan::math::test::get_new_msg;
   using stan::math::test::sum_lpdf;
 

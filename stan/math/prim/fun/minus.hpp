@@ -2,6 +2,7 @@
 #define STAN_MATH_PRIM_FUN_MINUS_HPP
 
 #include <stan/math/prim/meta.hpp>
+#include <stan/math/prim/functor/apply_vector_unary.hpp>
 
 namespace stan {
 namespace math {
@@ -13,9 +14,22 @@ namespace math {
  * @param x Subtrahend.
  * @return Negation of subtrahend.
  */
-template <typename T>
-inline auto minus(const T& x) {
-  return -x;
+template <typename T, require_not_std_vector_t<T>* = nullptr>
+inline auto minus(T&& x) {
+  return make_holder([](auto&& x_) { return -x_; }, std::forward<T>(x));
+}
+
+/**
+ * Return the negation of the each element of a vector
+ *
+ * @tparam T Type of container.
+ * @param x Container.
+ * @return Container where each element is negated.
+ */
+template <typename T, require_std_vector_t<T>* = nullptr>
+inline auto minus(T&& x) {
+  return apply_vector_unary<T>::apply(std::forward<T>(x),
+                                      [](auto&& v) { return -v; });
 }
 
 }  // namespace math

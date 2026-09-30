@@ -6,7 +6,6 @@
 #include <stan/math/prim/fun/binomial_coefficient_log.hpp>
 #include <stan/math/prim/fun/constants.hpp>
 #include <stan/math/prim/fun/digamma.hpp>
-#include <stan/math/prim/fun/F32.hpp>
 #include <stan/math/prim/fun/grad_F32.hpp>
 #include <stan/math/prim/fun/lbeta.hpp>
 #include <stan/math/prim/fun/lgamma.hpp>
@@ -15,7 +14,7 @@
 #include <stan/math/prim/fun/size.hpp>
 #include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 
 namespace stan {
 namespace math {
@@ -41,14 +40,15 @@ template <bool propto, typename T_n, typename T_N, typename T_size1,
           typename T_size2,
           require_all_not_nonscalar_prim_or_rev_kernel_expression_t<
               T_n, T_N, T_size1, T_size2>* = nullptr>
-return_type_t<T_size1, T_size2> beta_binomial_lpmf(const T_n& n, const T_N& N,
-                                                   const T_size1& alpha,
-                                                   const T_size2& beta) {
+inline return_type_t<T_size1, T_size2> beta_binomial_lpmf(const T_n& n,
+                                                          const T_N& N,
+                                                          const T_size1& alpha,
+                                                          const T_size2& beta) {
   using T_partials_return = partials_return_t<T_size1, T_size2>;
   using T_N_ref = ref_type_t<T_N>;
   using T_alpha_ref = ref_type_t<T_size1>;
   using T_beta_ref = ref_type_t<T_size2>;
-  static const char* function = "beta_binomial_lpmf";
+  static constexpr const char* function = "beta_binomial_lpmf";
   check_consistent_sizes(function, "Successes variable", n,
                          "Population size parameter", N,
                          "First prior sample size parameter", alpha,
@@ -66,13 +66,12 @@ return_type_t<T_size1, T_size2> beta_binomial_lpmf(const T_n& n, const T_N& N,
   check_positive_finite(function, "Second prior sample size parameter",
                         beta_ref);
 
-  if (!include_summand<propto, T_size1, T_size2>::value) {
+  if constexpr (!include_summand<propto, T_size1, T_size2>::value) {
     return 0.0;
   }
 
   T_partials_return logp(0.0);
-  operands_and_partials<T_alpha_ref, T_beta_ref> ops_partials(alpha_ref,
-                                                              beta_ref);
+  auto ops_partials = make_partials_propagator(alpha_ref, beta_ref);
 
   scalar_seq_view<T_n> n_vec(n);
   scalar_seq_view<T_N_ref> N_vec(N_ref);
@@ -93,7 +92,7 @@ return_type_t<T_size1, T_size2> beta_binomial_lpmf(const T_n& n, const T_N& N,
   VectorBuilder<include_summand<propto>::value, T_partials_return, T_n, T_N>
       normalizing_constant(size_n_N);
   for (size_t i = 0; i < size_n_N; i++)
-    if (include_summand<propto>::value)
+    if constexpr (include_summand<propto>::value)
       normalizing_constant[i] = binomial_coefficient_log(N_vec[i], n_vec[i]);
 
   VectorBuilder<true, T_partials_return, T_size1, T_size2> lbeta_denominator(
@@ -110,28 +109,27 @@ return_type_t<T_size1, T_size2> beta_binomial_lpmf(const T_n& n, const T_N& N,
                     - lbeta_denominator[i];
   }
 
-  VectorBuilder<!is_constant_all<T_size1>::value, T_partials_return, T_n,
-                T_size1>
+  VectorBuilder<is_autodiff_v<T_size1>, T_partials_return, T_n, T_size1>
       digamma_n_plus_alpha(max_size(n, alpha));
-  if (!is_constant_all<T_size1>::value) {
+  if constexpr (is_autodiff_v<T_size1>) {
     for (size_t i = 0; i < max_size(n, alpha); i++) {
       digamma_n_plus_alpha[i] = digamma(n_vec.val(i) + alpha_vec.val(i));
     }
   }
 
-  VectorBuilder<!is_constant_all<T_size1, T_size2>::value, T_partials_return,
-                T_size1, T_size2>
+  VectorBuilder<is_any_autodiff_v<T_size1, T_size2>, T_partials_return, T_size1,
+                T_size2>
       digamma_alpha_plus_beta(size_alpha_beta);
-  if (!is_constant_all<T_size1, T_size2>::value) {
+  if constexpr (is_any_autodiff_v<T_size1, T_size2>) {
     for (size_t i = 0; i < size_alpha_beta; i++) {
       digamma_alpha_plus_beta[i] = digamma(alpha_vec.val(i) + beta_vec.val(i));
     }
   }
 
-  VectorBuilder<!is_constant_all<T_size1, T_size2>::value, T_partials_return,
-                T_N, T_size1, T_size2>
+  VectorBuilder<is_any_autodiff_v<T_size1, T_size2>, T_partials_return, T_N,
+                T_size1, T_size2>
       digamma_diff(max_size(N, alpha, beta));
-  if (!is_constant_all<T_size1, T_size2>::value) {
+  if constexpr (is_any_autodiff_v<T_size1, T_size2>) {
     for (size_t i = 0; i < max_size(N, alpha, beta); i++) {
       digamma_diff[i]
           = digamma_alpha_plus_beta[i]
@@ -139,28 +137,28 @@ return_type_t<T_size1, T_size2> beta_binomial_lpmf(const T_n& n, const T_N& N,
     }
   }
 
-  VectorBuilder<!is_constant_all<T_size1>::value, T_partials_return, T_size1>
+  VectorBuilder<is_autodiff_v<T_size1>, T_partials_return, T_size1>
       digamma_alpha(size_alpha);
   for (size_t i = 0; i < size_alpha; i++)
-    if (!is_constant_all<T_size1>::value)
+    if constexpr (is_autodiff_v<T_size1>)
       digamma_alpha[i] = digamma(alpha_vec.val(i));
 
-  VectorBuilder<!is_constant_all<T_size2>::value, T_partials_return, T_size2>
+  VectorBuilder<is_autodiff_v<T_size2>, T_partials_return, T_size2>
       digamma_beta(size_beta);
   for (size_t i = 0; i < size_beta; i++)
-    if (!is_constant_all<T_size2>::value)
+    if constexpr (is_autodiff_v<T_size2>)
       digamma_beta[i] = digamma(beta_vec.val(i));
 
   for (size_t i = 0; i < max_size_seq_view; i++) {
-    if (include_summand<propto>::value)
+    if constexpr (include_summand<propto>::value)
       logp += normalizing_constant[i];
     logp += lbeta_diff[i];
 
-    if (!is_constant_all<T_size1>::value)
-      ops_partials.edge1_.partials_[i]
+    if constexpr (is_autodiff_v<T_size1>)
+      partials<0>(ops_partials)[i]
           += digamma_n_plus_alpha[i] + digamma_diff[i] - digamma_alpha[i];
-    if (!is_constant_all<T_size2>::value)
-      ops_partials.edge2_.partials_[i]
+    if constexpr (is_autodiff_v<T_size2>)
+      partials<1>(ops_partials)[i]
           += digamma(N_vec.val(i) - n_vec.val(i) + beta_vec.val(i))
              + digamma_diff[i] - digamma_beta[i];
   }
@@ -168,9 +166,10 @@ return_type_t<T_size1, T_size2> beta_binomial_lpmf(const T_n& n, const T_N& N,
 }
 
 template <typename T_n, typename T_N, typename T_size1, typename T_size2>
-return_type_t<T_size1, T_size2> beta_binomial_lpmf(const T_n& n, const T_N& N,
-                                                   const T_size1& alpha,
-                                                   const T_size2& beta) {
+inline return_type_t<T_size1, T_size2> beta_binomial_lpmf(const T_n& n,
+                                                          const T_N& N,
+                                                          const T_size1& alpha,
+                                                          const T_size2& beta) {
   return beta_binomial_lpmf<false>(n, N, alpha, beta);
 }
 

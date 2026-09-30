@@ -1,5 +1,6 @@
 // Arguments: Doubles, Doubles, Doubles
-#include <stan/math/prim.hpp>
+#include <stan/math/prim/prob/gamma_cdf.hpp>
+#include <stan/math/prim/fun/gamma_p.hpp>
 
 using stan::math::var;
 using std::numeric_limits;
@@ -82,7 +83,6 @@ class AgradCdfGamma : public AgradCdfTest {
   stan::return_type_t<T_y, T_shape, T_inv_scale> cdf_function(
       const T_y& y, const T_shape& alpha, const T_inv_scale& beta, const T3&,
       const T4&, const T5&) {
-    using boost::math::gamma_p;
     using stan::math::gamma_p;
 
     return gamma_p(alpha, beta * y);

@@ -7,7 +7,7 @@
 #include <stan/math/prim/fun/constants.hpp>
 #include <stan/math/prim/fun/digamma.hpp>
 #include <stan/math/prim/fun/exp.hpp>
-#include <stan/math/prim/fun/F32.hpp>
+#include <stan/math/prim/fun/hypergeometric_3F2.hpp>
 #include <stan/math/prim/fun/grad_F32.hpp>
 #include <stan/math/prim/fun/lbeta.hpp>
 #include <stan/math/prim/fun/max_size.hpp>
@@ -15,7 +15,7 @@
 #include <stan/math/prim/fun/size.hpp>
 #include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <cmath>
 
 namespace stan {
@@ -40,15 +40,16 @@ namespace math {
  * @throw std::invalid_argument if container sizes mismatch
  */
 template <typename T_n, typename T_N, typename T_size1, typename T_size2>
-return_type_t<T_size1, T_size2> beta_binomial_cdf(const T_n& n, const T_N& N,
-                                                  const T_size1& alpha,
-                                                  const T_size2& beta) {
+inline return_type_t<T_size1, T_size2> beta_binomial_cdf(const T_n& n,
+                                                         const T_N& N,
+                                                         const T_size1& alpha,
+                                                         const T_size2& beta) {
   using T_partials_return = partials_return_t<T_n, T_N, T_size1, T_size2>;
   using std::exp;
   using T_N_ref = ref_type_t<T_N>;
   using T_alpha_ref = ref_type_t<T_size1>;
   using T_beta_ref = ref_type_t<T_size2>;
-  static const char* function = "beta_binomial_cdf";
+  static constexpr const char* function = "beta_binomial_cdf";
   check_consistent_sizes(function, "Successes variable", n,
                          "Population size parameter", N,
                          "First prior sample size parameter", alpha,
@@ -67,8 +68,7 @@ return_type_t<T_size1, T_size2> beta_binomial_cdf(const T_n& n, const T_N& N,
                         beta_ref);
 
   T_partials_return P(1.0);
-  operands_and_partials<T_alpha_ref, T_beta_ref> ops_partials(alpha_ref,
-                                                              beta_ref);
+  auto ops_partials = make_partials_propagator(alpha_ref, beta_ref);
 
   scalar_seq_view<T_n> n_vec(n);
   scalar_seq_view<T_N_ref> N_vec(N_ref);
@@ -100,8 +100,8 @@ return_type_t<T_size1, T_size2> beta_binomial_cdf(const T_n& n, const T_N& N,
     const T_partials_return nu = beta_dbl + N_minus_n - 1;
     const T_partials_return one = 1;
 
-    const T_partials_return F
-        = F32(one, mu, 1 - N_minus_n, n_dbl + 2, 1 - nu, one);
+    const T_partials_return F = hypergeometric_3F2({one, mu, 1 - N_minus_n},
+                                                   {n_dbl + 2, 1 - nu}, one);
 
     T_partials_return C = lbeta(nu, mu) - lbeta(alpha_dbl, beta_dbl)
                           - lbeta(N_minus_n, n_dbl + 2);
@@ -117,29 +117,29 @@ return_type_t<T_size1, T_size2> beta_binomial_cdf(const T_n& n, const T_N& N,
               : digamma(alpha_dbl + beta_dbl) - digamma(mu + nu);
 
     T_partials_return dF[6];
-    if (!is_constant_all<T_size1, T_size2>::value) {
+    if constexpr (is_any_autodiff_v<T_size1, T_size2>) {
       grad_F32(dF, one, mu, 1 - N_minus_n, n_dbl + 2, 1 - nu, one);
     }
-    if (!is_constant_all<T_size1>::value) {
+    if constexpr (is_autodiff_v<T_size1>) {
       const T_partials_return g
           = -C * (digamma(mu) - digamma(alpha_dbl) + digammaDiff + dF[1] / F);
-      ops_partials.edge1_.partials_[i] += g / Pi;
+      partials<0>(ops_partials)[i] += g / Pi;
     }
-    if (!is_constant_all<T_size2>::value) {
+    if constexpr (is_autodiff_v<T_size2>) {
       const T_partials_return g
           = -C * (digamma(nu) - digamma(beta_dbl) + digammaDiff - dF[4] / F);
-      ops_partials.edge2_.partials_[i] += g / Pi;
+      partials<1>(ops_partials)[i] += g / Pi;
     }
   }
 
-  if (!is_constant_all<T_size1>::value) {
+  if constexpr (is_autodiff_v<T_size1>) {
     for (size_t i = 0; i < stan::math::size(alpha); ++i) {
-      ops_partials.edge1_.partials_[i] *= P;
+      partials<0>(ops_partials)[i] *= P;
     }
   }
-  if (!is_constant_all<T_size2>::value) {
+  if constexpr (is_autodiff_v<T_size2>) {
     for (size_t i = 0; i < stan::math::size(beta); ++i) {
-      ops_partials.edge2_.partials_[i] *= P;
+      partials<1>(ops_partials)[i] *= P;
     }
   }
 

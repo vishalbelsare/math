@@ -26,7 +26,7 @@ namespace math {
  * @tparam Type of object to which pointer points.
  */
 template <typename T>
-bool is_aligned(T* ptr, unsigned int bytes_aligned) {
+inline bool is_aligned(T* ptr, unsigned int bytes_aligned) {
   return (reinterpret_cast<uintptr_t>(ptr) % bytes_aligned) == 0U;
 }
 
@@ -158,7 +158,9 @@ class stack_alloc {
    * Return a newly allocated block of memory of the appropriate
    * size managed by the stack allocator.
    *
-   * The allocated pointer will be 8-byte aligned.
+   * The allocated pointer will be 8-byte aligned. If the number
+   * of bytes requested is not a multiple of 8, the reserved space
+   * will be padded up to the next multiple of 8.
    *
    * This function may call C++'s <code>malloc()</code> function,
    * with any exceptions percolated through this function.
@@ -167,12 +169,14 @@ class stack_alloc {
    * @return A pointer to the allocated memory.
    */
   inline void* alloc(size_t len) {
+    size_t pad = len % 8 == 0 ? 0 : 8 - len % 8;
+
     // Typically, just return and increment the next location.
     char* result = next_loc_;
-    next_loc_ += len;
+    next_loc_ += len + pad;
     // Occasionally, we have to switch blocks.
     if (unlikely(next_loc_ >= cur_block_end_)) {
-      result = move_to_next_block(len);
+      result = move_to_next_block(len + pad);
     }
     return reinterpret_cast<void*>(result);
   }
@@ -250,7 +254,7 @@ class stack_alloc {
   /**
    * Return number of bytes allocated to this instance by the heap.
    * This is not the same as the number of bytes allocated through
-   * calls to memalloc_.  The latter number is not calculatable
+   * calls to memalloc_.  The latter number is not calculable
    * because space is wasted at the end of blocks if the next
    * alloc request doesn't fit.  (Perhaps we could trim down to
    * what is actually used?)

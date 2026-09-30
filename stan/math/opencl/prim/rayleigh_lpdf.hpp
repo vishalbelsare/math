@@ -7,7 +7,7 @@
 #include <stan/math/prim/meta.hpp>
 #include <stan/math/prim/err.hpp>
 #include <stan/math/prim/fun/max_size.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 
 namespace stan {
 namespace math {
@@ -28,9 +28,9 @@ template <
     bool propto, typename T_y_cl, typename T_scale_cl,
     require_all_prim_or_rev_kernel_expression_t<T_y_cl, T_scale_cl>* = nullptr,
     require_any_not_stan_scalar_t<T_y_cl, T_scale_cl>* = nullptr>
-return_type_t<T_y_cl, T_scale_cl> rayleigh_lpdf(const T_y_cl& y,
-                                                const T_scale_cl& sigma) {
-  static const char* function = "rayleigh_lpdf(OpenCL)";
+inline return_type_t<T_y_cl, T_scale_cl> rayleigh_lpdf(
+    const T_y_cl& y, const T_scale_cl& sigma) {
+  static constexpr const char* function = "rayleigh_lpdf(OpenCL)";
   using T_partials_return = partials_return_t<T_y_cl, T_scale_cl>;
 
   check_consistent_sizes(function, "Random variable", y, "Scale parameter",
@@ -39,7 +39,7 @@ return_type_t<T_y_cl, T_scale_cl> rayleigh_lpdf(const T_y_cl& y,
   if (N == 0) {
     return 0.0;
   }
-  if (!include_summand<propto, T_y_cl, T_scale_cl>::value) {
+  if constexpr (!include_summand<propto, T_y_cl, T_scale_cl>::value) {
     return 0.0;
   }
 
@@ -49,8 +49,7 @@ return_type_t<T_y_cl, T_scale_cl> rayleigh_lpdf(const T_y_cl& y,
   const auto& y_val = value_of(y_col);
   const auto& sigma_val = value_of(sigma_col);
 
-  operands_and_partials<decltype(y_col), decltype(sigma_col)> ops_partials(
-      y_col, sigma_col);
+  auto ops_partials = make_partials_propagator(y_col, sigma_col);
 
   auto check_y_positive
       = check_cl(function, "Random variable", y_val, "positive");
@@ -81,16 +80,16 @@ return_type_t<T_y_cl, T_scale_cl> rayleigh_lpdf(const T_y_cl& y,
   results(check_y_positive, check_sigma_positive, logp_cl, y_deriv_cl,
           sigma_deriv_cl)
       = expressions(y_positive, sigma_positive, logp_expr,
-                    calc_if<!is_constant<T_y_cl>::value>(y_deriv_expr),
-                    calc_if<!is_constant<T_scale_cl>::value>(sigma_deriv_expr));
+                    calc_if<is_autodiff_v<T_y_cl>>(y_deriv_expr),
+                    calc_if<is_autodiff_v<T_scale_cl>>(sigma_deriv_expr));
 
   T_partials_return logp = sum(from_matrix_cl(logp_cl));
 
-  if (!is_constant<T_y_cl>::value) {
-    ops_partials.edge1_.partials_ = std::move(y_deriv_cl);
+  if constexpr (is_autodiff_v<T_y_cl>) {
+    partials<0>(ops_partials) = std::move(y_deriv_cl);
   }
-  if (!is_constant<T_scale_cl>::value) {
-    ops_partials.edge2_.partials_ = std::move(sigma_deriv_cl);
+  if constexpr (is_autodiff_v<T_scale_cl>) {
+    partials<1>(ops_partials) = std::move(sigma_deriv_cl);
   }
 
   return ops_partials.build(logp);

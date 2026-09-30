@@ -249,7 +249,7 @@ namespace internal {
 #if __TBB_TASK_PRIORITY
         //! Pointer to the next offloaded lower priority task.
         /** Used to maintain a list of offloaded tasks inside the scheduler. **/
-        task* next_offloaded;
+        tbb::task* next_offloaded;
 #endif
 
 #if __TBB_PREVIEW_RESUMABLE_TASKS
@@ -376,7 +376,10 @@ private:
 public:
     enum kind_type {
         isolated,
-        bound
+        bound,
+        kind_complete,
+        kind_detached,
+        kind_dying
     };
 
     enum traits_type {

@@ -56,13 +56,13 @@ inline return_type_t<T1, T2> log_falling_factorial(const T1 x, const T2 n) {
   if (is_any_nan(x, n)) {
     return NOT_A_NUMBER;
   }
-  static const char* function = "log_falling_factorial";
+  static constexpr const char* function = "log_falling_factorial";
   check_positive(function, "first argument", x);
   return lgamma(x + 1) - lgamma(x - n + 1);
 }
 
 /**
- * Enables the vectorised application of the log_falling_factorial function,
+ * Enables the vectorized application of the log_falling_factorial function,
  * when the first and/or second arguments are containers.
  *
  * @tparam T1 type of first input
@@ -72,10 +72,13 @@ inline return_type_t<T1, T2> log_falling_factorial(const T1 x, const T2 n) {
  * @return log_falling_factorial function applied to the two inputs.
  */
 template <typename T1, typename T2, require_any_container_t<T1, T2>* = nullptr>
-inline auto log_falling_factorial(const T1& a, const T2& b) {
-  return apply_scalar_binary(a, b, [&](const auto& c, const auto& d) {
-    return log_falling_factorial(c, d);
-  });
+inline auto log_falling_factorial(T1&& a, T2&& b) {
+  return apply_scalar_binary(
+      [](auto&& c, auto&& d) {
+        return log_falling_factorial(std::forward<decltype(c)>(c),
+                                     std::forward<decltype(d)>(d));
+      },
+      std::forward<T1>(a), std::forward<T2>(b));
 }
 
 }  // namespace math

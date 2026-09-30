@@ -5,6 +5,7 @@
 #include <stan/math/prim/err.hpp>
 #include <stan/math/prim/fun/constants.hpp>
 #include <stan/math/prim/fun/max_size.hpp>
+#include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/scalar_seq_view.hpp>
 #include <boost/random/gamma_distribution.hpp>
 #include <boost/random/poisson_distribution.hpp>
@@ -40,9 +41,12 @@ neg_binomial_2_log_rng(const T_loc& eta, const T_inv& phi, RNG& rng) {
   using boost::random::poisson_distribution;
   using T_eta_ref = ref_type_t<T_loc>;
   using T_phi_ref = ref_type_t<T_inv>;
-  static const char* function = "neg_binomial_2_log_rng";
+  static constexpr const char* function = "neg_binomial_2_log_rng";
   check_consistent_sizes(function, "Log-location parameter", eta,
                          "Inverse dispersion parameter", phi);
+  if (size_zero(eta, phi)) {
+    return {};
+  }
   T_eta_ref eta_ref = eta;
   T_phi_ref phi_ref = phi;
   check_finite(function, "Log-location parameter", eta_ref);

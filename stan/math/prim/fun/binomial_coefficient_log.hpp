@@ -10,7 +10,7 @@
 #include <stan/math/prim/fun/lbeta.hpp>
 #include <stan/math/prim/fun/lgamma.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <stan/math/prim/functor/apply_scalar_binary.hpp>
 
 namespace stan {
@@ -96,13 +96,13 @@ inline return_type_t<T_n, T_k> binomial_coefficient_log(const T_n n,
   const T_partials_return n_plus_1 = n_dbl + 1;
   const T_partials_return n_plus_1_mk = n_plus_1 - k_dbl;
 
-  static const char* function = "binomial_coefficient_log";
+  static constexpr const char* function = "binomial_coefficient_log";
   check_greater_or_equal(function, "first argument", n, -1);
   check_greater_or_equal(function, "second argument", k, -1);
   check_greater_or_equal(function, "(first argument - second argument + 1)",
                          n_plus_1_mk, 0.0);
 
-  operands_and_partials<T_n, T_k> ops_partials(n, k);
+  auto ops_partials = make_partials_propagator(n, k);
 
   T_partials_return value;
   if (k_dbl == 0) {
@@ -113,7 +113,7 @@ inline return_type_t<T_n, T_k> binomial_coefficient_log(const T_n n,
     value = -lbeta(n_plus_1_mk, k_dbl + 1) - log1p(n_dbl);
   }
 
-  if (!is_constant_all<T_n, T_k>::value) {
+  if constexpr (is_any_autodiff_v<T_n, T_k>) {
     // Branching on all the edge cases.
     // In direct computation many of those would be NaN
     // But one-sided limits from within the domain exist, all of the below
@@ -123,25 +123,25 @@ inline return_type_t<T_n, T_k> binomial_coefficient_log(const T_n n,
     // se we can ignore the n == k - 1 edge case.
     T_partials_return digamma_n_plus_1_mk = digamma(n_plus_1_mk);
 
-    if (!is_constant_all<T_n>::value) {
+    if constexpr (is_autodiff_v<T_n>) {
       if (n_dbl == -1.0) {
         if (k_dbl == 0) {
-          ops_partials.edge1_.partials_[0] = 0;
+          partials<0>(ops_partials)[0] = 0;
         } else {
-          ops_partials.edge1_.partials_[0] = NEGATIVE_INFTY;
+          partials<0>(ops_partials)[0] = NEGATIVE_INFTY;
         }
       } else {
-        ops_partials.edge1_.partials_[0]
+        partials<0>(ops_partials)[0]
             = (digamma(n_plus_1) - digamma_n_plus_1_mk);
       }
     }
-    if (!is_constant_all<T_k>::value) {
+    if constexpr (is_autodiff_v<T_k>) {
       if (k_dbl == 0 && n_dbl == -1.0) {
-        ops_partials.edge2_.partials_[0] = NEGATIVE_INFTY;
+        partials<1>(ops_partials)[0] = NEGATIVE_INFTY;
       } else if (k_dbl == -1) {
-        ops_partials.edge2_.partials_[0] = INFTY;
+        partials<1>(ops_partials)[0] = INFTY;
       } else {
-        ops_partials.edge2_.partials_[0]
+        partials<1>(ops_partials)[0]
             = (digamma_n_plus_1_mk - digamma(k_dbl + 1));
       }
     }
@@ -151,7 +151,7 @@ inline return_type_t<T_n, T_k> binomial_coefficient_log(const T_n n,
 }
 
 /**
- * Enables the vectorised application of the binomial coefficient log function,
+ * Enables the vectorized application of the binomial coefficient log function,
  * when the first and/or second arguments are containers.
  *
  * @tparam T1 type of first input
@@ -161,10 +161,13 @@ inline return_type_t<T_n, T_k> binomial_coefficient_log(const T_n n,
  * @return Binomial coefficient log function applied to the two inputs.
  */
 template <typename T1, typename T2, require_any_container_t<T1, T2>* = nullptr>
-inline auto binomial_coefficient_log(const T1& a, const T2& b) {
-  return apply_scalar_binary(a, b, [&](const auto& c, const auto& d) {
-    return binomial_coefficient_log(c, d);
-  });
+inline auto binomial_coefficient_log(T1&& a, T2&& b) {
+  return apply_scalar_binary(
+      [](auto&& c, auto&& d) {
+        return binomial_coefficient_log(std::forward<decltype(c)>(c),
+                                        std::forward<decltype(d)>(d));
+      },
+      std::forward<T1>(a), std::forward<T2>(b));
 }
 
 }  // namespace math

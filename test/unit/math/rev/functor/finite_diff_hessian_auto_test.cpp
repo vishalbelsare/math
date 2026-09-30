@@ -1,4 +1,5 @@
 #include <stan/math/rev.hpp>
+#include <test/unit/math/rev/util.hpp>
 #include <stan/math/mix.hpp>
 #include <gtest/gtest.h>
 
@@ -14,8 +15,7 @@ using Eigen::Dynamic;
 using Eigen::Matrix;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
-using std::exp;
-using std::pow;
+using stan::math::pow;
 
 /*
  * A set of functions to test the finite-difference approximation on.
@@ -41,7 +41,7 @@ struct linear {
 struct exp_diag {
   template <typename T>
   inline T operator()(const Matrix<T, Dynamic, 1>& x) const {
-    return exp(2 * x(0)) + exp(x(1));
+    return stan::math::exp(2 * x(0)) + stan::math::exp(x(1));
   }
 };
 
@@ -49,7 +49,7 @@ struct exp_diag {
 struct exp_full {
   template <typename T>
   inline T operator()(const Matrix<T, Dynamic, 1>& x) const {
-    return exp(x(0) - x(1));
+    return stan::math::exp(x(0) - x(1));
   }
 };
 
@@ -66,8 +66,8 @@ struct one_arg {
  */
 
 template <typename F>
-void test_hessian_finite_diff(const std::string& msg, const F& f,
-                              Eigen::VectorXd& x) {
+inline void test_hessian_finite_diff(const std::string& msg, const F& f,
+                                     Eigen::VectorXd& x) {
   double fx;
   Eigen::VectorXd grad_fx;
   Eigen::MatrixXd hess_fx;
@@ -90,7 +90,7 @@ void test_hessian_finite_diff(const std::string& msg, const F& f,
     EXPECT_NEAR(hess_fx_ad(i), hess_fx(i), 1e-4) << msg;
 }
 
-TEST(RevFunctor, polynomial) {
+TEST_F(AgradRev, RevFunctor_polynomial) {
   poly f;
   Matrix<double, Dynamic, 1> x(2);
   x << 5, 7;
@@ -110,7 +110,7 @@ TEST(RevFunctor, polynomial) {
   EXPECT_FLOAT_EQ(6, hess_fx(1, 1));
 }
 
-TEST(RevFunctor, linear_function) {
+TEST_F(AgradRev, RevFunctor_linear_function) {
   linear f;
   Matrix<double, Dynamic, 1> x(3);
   x << 5, 7, -1;
@@ -131,7 +131,7 @@ TEST(RevFunctor, linear_function) {
   EXPECT_FLOAT_EQ(0, hess_fx(2, 2));
 }
 
-TEST(RevFunctor, exp_diag) {
+TEST_F(AgradRev, RevFunctor_exp_diag) {
   exp_diag f;
   Matrix<double, Dynamic, 1> x(2);
   x << 2, -1;
@@ -141,13 +141,13 @@ TEST(RevFunctor, exp_diag) {
   stan::math::internal::finite_diff_hessian_auto(f, x, fx, grad_fx, hess_fx);
   EXPECT_EQ(2, hess_fx.rows());
   EXPECT_EQ(2, hess_fx.cols());
-  EXPECT_FLOAT_EQ(4 * exp(2 * 2), hess_fx(0, 0));
+  EXPECT_FLOAT_EQ(4 * stan::math::exp(2 * 2), hess_fx(0, 0));
   EXPECT_FLOAT_EQ(0, hess_fx(0, 1));
   EXPECT_FLOAT_EQ(0, hess_fx(1, 0));
-  EXPECT_FLOAT_EQ(exp(-1), hess_fx(1, 1));
+  EXPECT_FLOAT_EQ(stan::math::exp(-1), hess_fx(1, 1));
 }
 
-TEST(RevFunctor, exp_full) {
+TEST_F(AgradRev, RevFunctor_exp_full) {
   exp_full f;
   Matrix<double, Dynamic, 1> x(2);
   x << 1, -3;
@@ -157,13 +157,13 @@ TEST(RevFunctor, exp_full) {
   stan::math::internal::finite_diff_hessian_auto(f, x, fx, grad_fx, hess_fx);
   EXPECT_EQ(2, hess_fx.rows());
   EXPECT_EQ(2, hess_fx.cols());
-  EXPECT_FLOAT_EQ(exp(4), hess_fx(0, 0));
-  EXPECT_FLOAT_EQ(-exp(4), hess_fx(0, 1));
-  EXPECT_FLOAT_EQ(-exp(4), hess_fx(1, 0));
-  EXPECT_FLOAT_EQ(exp(4), hess_fx(1, 1));
+  EXPECT_FLOAT_EQ(stan::math::exp(4), hess_fx(0, 0));
+  EXPECT_FLOAT_EQ(-stan::math::exp(4), hess_fx(0, 1));
+  EXPECT_FLOAT_EQ(-stan::math::exp(4), hess_fx(1, 0));
+  EXPECT_FLOAT_EQ(stan::math::exp(4), hess_fx(1, 1));
 }
 
-TEST(RevFunctor, one_arg) {
+TEST_F(AgradRev, RevFunctor_one_arg) {
   one_arg f;
   Matrix<double, Dynamic, 1> x(1);
   x << 8;
@@ -176,7 +176,7 @@ TEST(RevFunctor, one_arg) {
   EXPECT_FLOAT_EQ(6 * 8, hess_fx(0, 0));
 }
 
-TEST(RevFunctor, FiniteDiffHessianAuto) {
+TEST_F(AgradRev, RevFunctor_FiniteDiffHessianAuto) {
   auto norm_fun
       = [](const auto& x) { return stan::math::normal_lpdf(x(0), x(1), x(2)); };
   Eigen::VectorXd x(3);

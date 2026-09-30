@@ -1,4 +1,5 @@
 #include <stan/math/rev.hpp>
+#include <test/unit/math/rev/util.hpp>
 #include <gtest/gtest.h>
 #include <test/unit/util.hpp>
 #include <test/unit/math/prim/functor/harmonic_oscillator.hpp>
@@ -65,7 +66,6 @@ TEST_F(StanAgradRevOde, initial_state_dv) {
 
   const size_t N = 3;
   const size_t M = 4;
-  const size_t z_size = N + N * M;
 
   Eigen::VectorXd y0_d = Eigen::VectorXd::Zero(N);
   std::vector<var> theta_v(M, 0.0);

@@ -1,5 +1,8 @@
 // Arguments: Ints, Doubles
-#include <stan/math/prim.hpp>
+#include <stan/math/prim/prob/poisson_cdf.hpp>
+#include <stan/math/prim/fun/exp.hpp>
+#include <stan/math/prim/fun/log.hpp>
+#include <stan/math/prim/fun/lgamma.hpp>
 
 using stan::math::var;
 using std::numeric_limits;
@@ -51,17 +54,14 @@ class AgradCdfPoisson : public AgradCdfTest {
   stan::return_type_t<T_rate> cdf_function(const T_n& n, const T_rate& lambda,
                                            const T2&, const T3&, const T4&,
                                            const T5&) {
-    using boost::math::lgamma;
     using stan::math::exp;
     using stan::math::lgamma;
+    using stan::math::log;
     using stan::math::pow;
-    using std::exp;
-    using std::log;
-    using std::pow;
 
     stan::return_type_t<T_rate> cdf(0);
     for (int i = 0; i <= n; i++) {
-      cdf += exp(i * log(lambda) - lgamma(i + 1));
+      cdf += exp(i * log(lambda) - stan::math::lgamma(i + 1));
     }
     cdf *= exp(-lambda);
     return cdf;

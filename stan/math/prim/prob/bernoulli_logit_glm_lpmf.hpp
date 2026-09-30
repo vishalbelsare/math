@@ -8,11 +8,12 @@
 #include <stan/math/prim/fun/as_array_or_scalar.hpp>
 #include <stan/math/prim/fun/constants.hpp>
 #include <stan/math/prim/fun/exp.hpp>
+#include <stan/math/prim/fun/isfinite.hpp>
 #include <stan/math/prim/fun/size.hpp>
 #include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/to_ref.hpp>
-#include <stan/math/prim/fun/value_of_rec.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/fun/value_of.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <cmath>
 
 namespace stan {
@@ -46,27 +47,28 @@ namespace math {
  * @throw std::invalid_argument if container sizes mismatch.
  */
 template <bool propto, typename T_y, typename T_x, typename T_alpha,
-          typename T_beta, require_eigen_t<T_x>* = nullptr>
-return_type_t<T_x, T_alpha, T_beta> bernoulli_logit_glm_lpmf(
+          typename T_beta, require_matrix_t<T_x>* = nullptr>
+inline return_type_t<T_x, T_alpha, T_beta> bernoulli_logit_glm_lpmf(
     const T_y& y, const T_x& x, const T_alpha& alpha, const T_beta& beta) {
   using Eigen::Array;
   using Eigen::Dynamic;
   using Eigen::log1p;
   using Eigen::Matrix;
   using std::exp;
+  using std::isfinite;
   constexpr int T_x_rows = T_x::RowsAtCompileTime;
   using T_partials_return = partials_return_t<T_y, T_x, T_alpha, T_beta>;
   using T_ytheta_tmp =
       typename std::conditional_t<T_x_rows == 1, T_partials_return,
                                   Array<T_partials_return, Dynamic, 1>>;
-  using T_x_ref = ref_type_if_t<!is_constant<T_x>::value, T_x>;
-  using T_alpha_ref = ref_type_if_t<!is_constant<T_alpha>::value, T_alpha>;
-  using T_beta_ref = ref_type_if_t<!is_constant<T_beta>::value, T_beta>;
+  using T_x_ref = ref_type_if_not_constant_t<T_x>;
+  using T_alpha_ref = ref_type_if_not_constant_t<T_alpha>;
+  using T_beta_ref = ref_type_if_not_constant_t<T_beta>;
 
   const size_t N_instances = T_x_rows == 1 ? stan::math::size(y) : x.rows();
   const size_t N_attributes = x.cols();
 
-  static const char* function = "bernoulli_logit_glm_lpmf";
+  static constexpr const char* function = "bernoulli_logit_glm_lpmf";
   check_consistent_size(function, "Vector of dependent variables", y,
                         N_instances);
   check_consistent_size(function, "Weight vector", beta, N_attributes);
@@ -78,7 +80,7 @@ return_type_t<T_x, T_alpha, T_beta> bernoulli_logit_glm_lpmf(
   const auto& y_ref = to_ref(y);
   check_bounded(function, "Vector of dependent variables", y_ref, 0, 1);
 
-  if (!include_summand<propto, T_x, T_alpha, T_beta>::value) {
+  if constexpr (!include_summand<propto, T_x, T_alpha, T_beta>::value) {
     return 0;
   }
 
@@ -86,24 +88,22 @@ return_type_t<T_x, T_alpha, T_beta> bernoulli_logit_glm_lpmf(
   T_alpha_ref alpha_ref = alpha;
   T_beta_ref beta_ref = beta;
 
-  const auto& y_val = value_of_rec(y_ref);
-  const auto& x_val
-      = to_ref_if<!is_constant<T_beta>::value>(value_of_rec(x_ref));
-  const auto& alpha_val = value_of_rec(alpha_ref);
-  const auto& beta_val = value_of_rec(beta_ref);
+  const auto& y_val = value_of(y_ref);
+  const auto& x_val = to_ref_if<is_autodiff_v<T_beta>>(value_of(x_ref));
+  const auto& alpha_val = value_of(alpha_ref);
+  const auto& beta_val = value_of(beta_ref);
 
   const auto& y_val_vec = as_column_vector_or_scalar(y_val);
   const auto& alpha_val_vec = as_column_vector_or_scalar(alpha_val);
-  const auto& beta_val_vec = to_ref_if<!is_constant<T_x>::value>(
-      as_column_vector_or_scalar(beta_val));
+  const auto& beta_val_vec
+      = to_ref_if<is_autodiff_v<T_x>>(as_column_vector_or_scalar(beta_val));
 
-  auto signs = to_ref_if<!is_constant_all<T_beta, T_x, T_alpha>::value>(
+  auto signs = to_ref_if<is_any_autodiff_v<T_beta, T_x, T_alpha>>(
       2 * as_array_or_scalar(y_val_vec) - 1);
 
   Array<T_partials_return, Dynamic, 1> ytheta(N_instances);
-  if (T_x_rows == 1) {
-    T_ytheta_tmp ytheta_tmp
-        = forward_as<T_ytheta_tmp>((x_val * beta_val_vec)(0, 0));
+  if constexpr (T_x_rows == 1) {
+    T_ytheta_tmp ytheta_tmp = (x_val * beta_val_vec)(0, 0);
     ytheta = signs * (ytheta_tmp + as_array_or_scalar(alpha_val_vec));
   } else {
     ytheta = (x_val * beta_val_vec).array();
@@ -113,50 +113,45 @@ return_type_t<T_x, T_alpha, T_beta> bernoulli_logit_glm_lpmf(
   // Compute the log-density and handle extreme values gracefully
   // using Taylor approximations.
   // And compute the derivatives wrt theta.
-  static const double cutoff = 20.0;
+  static constexpr double cutoff = 20.0;
   Eigen::Array<T_partials_return, Dynamic, 1> exp_m_ytheta = exp(-ytheta);
   T_partials_return logp = sum(
       (ytheta > cutoff)
           .select(-exp_m_ytheta,
                   (ytheta < -cutoff).select(ytheta, -log1p(exp_m_ytheta))));
 
-  if (!std::isfinite(logp)) {
+  if (!isfinite(logp)) {
     check_finite(function, "Weight vector", beta);
     check_finite(function, "Intercept", alpha);
     check_finite(function, "Matrix of independent variables", ytheta);
   }
 
-  operands_and_partials<T_x_ref, T_alpha_ref, T_beta_ref> ops_partials(
-      x_ref, alpha_ref, beta_ref);
+  auto ops_partials = make_partials_propagator(x_ref, alpha_ref, beta_ref);
   // Compute the necessary derivatives.
-  if (!is_constant_all<T_beta, T_x, T_alpha>::value) {
+  if constexpr (is_any_autodiff_v<T_beta, T_x, T_alpha>) {
     Matrix<T_partials_return, Dynamic, 1> theta_derivative
         = (ytheta > cutoff)
-              .select(-exp_m_ytheta,
+              .select(signs * exp_m_ytheta,
                       (ytheta < -cutoff)
-                          .select(signs,
+                          .select(signs * T_partials_return(1.0),
                                   signs * exp_m_ytheta / (exp_m_ytheta + 1)));
-    if (!is_constant_all<T_beta>::value) {
-      if (T_x_rows == 1) {
-        ops_partials.edge3_.partials_
-            = forward_as<Matrix<T_partials_return, 1, Dynamic>>(
-                theta_derivative.sum() * x_val);
+    if constexpr (is_autodiff_v<T_beta>) {
+      if constexpr (T_x_rows == 1) {
+        edge<2>(ops_partials).partials_ = theta_derivative.sum() * x_val;
       } else {
-        ops_partials.edge3_.partials_ = x_val.transpose() * theta_derivative;
+        partials<2>(ops_partials) = x_val.transpose() * theta_derivative;
       }
     }
-    if (!is_constant_all<T_x>::value) {
-      if (T_x_rows == 1) {
-        ops_partials.edge1_.partials_
-            = forward_as<Array<T_partials_return, Dynamic, T_x_rows>>(
-                beta_val_vec * theta_derivative.sum());
+    if constexpr (is_autodiff_v<T_x>) {
+      if constexpr (T_x_rows == 1) {
+        edge<0>(ops_partials).partials_ = beta_val_vec * theta_derivative.sum();
       } else {
-        ops_partials.edge1_.partials_
+        edge<0>(ops_partials).partials_
             = (beta_val_vec * theta_derivative.transpose()).transpose();
       }
     }
-    if (!is_constant_all<T_alpha>::value) {
-      ops_partials.edge2_.partials_ = theta_derivative;
+    if constexpr (is_autodiff_v<T_alpha>) {
+      partials<1>(ops_partials) = theta_derivative;
     }
   }
   return ops_partials.build(logp);

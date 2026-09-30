@@ -1,10 +1,12 @@
 #include <stan/math/rev.hpp>
+#include <test/unit/math/rev/util.hpp>
 #include <boost/mp11.hpp>
 #include <gtest/gtest.h>
 #include <test/unit/math/rev/functor/test_fixture_ode.hpp>
 #include <test/unit/math/rev/functor/test_fixture_ode_sho_ctl.hpp>
 #include <test/unit/math/rev/functor/ode_test_functors.hpp>
 
+namespace sho_ode_adjoint_typed_error_test {
 /**
  *
  * Use same solver functor type for both w & w/o tolerance control
@@ -34,9 +36,11 @@ TYPED_TEST_P(harmonic_oscillator_ctl_test, value) {
   this->test_value(1.0);
   this->test_value(-1.0);
 
-  if (std::is_same<std::tuple_element_t<2, TypeParam>, double>::value
-      && std::is_same<std::tuple_element_t<3, TypeParam>, double>::value
-      && std::is_same<std::tuple_element_t<4, TypeParam>, double>::value) {
+  if constexpr (std::is_same<std::tuple_element_t<2, TypeParam>, double>::value
+                && std::is_same<std::tuple_element_t<3, TypeParam>,
+                                double>::value
+                && std::is_same<std::tuple_element_t<4, TypeParam>,
+                                double>::value) {
     EXPECT_EQ(stan::math::nested_size(), 0);
   } else {
     EXPECT_GT(stan::math::nested_size(), 0);
@@ -45,5 +49,6 @@ TYPED_TEST_P(harmonic_oscillator_ctl_test, value) {
 
 REGISTER_TYPED_TEST_SUITE_P(harmonic_oscillator_ctl_test, no_error,
                             error_conditions, value);
-INSTANTIATE_TYPED_TEST_SUITE_P(StanOde, harmonic_oscillator_ctl_test,
+INSTANTIATE_TYPED_TEST_SUITE_P(StanAdjShoOde, harmonic_oscillator_ctl_test,
                                harmonic_oscillator_ctl_test_types);
+}  // namespace sho_ode_adjoint_typed_error_test

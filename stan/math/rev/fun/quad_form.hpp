@@ -4,11 +4,11 @@
 #include <stan/math/rev/meta.hpp>
 #include <stan/math/rev/core.hpp>
 #include <stan/math/rev/fun/to_var_value.hpp>
+#include <stan/math/rev/fun/value_of.hpp>
 #include <stan/math/prim/err.hpp>
 #include <stan/math/prim/fun/Eigen.hpp>
-#include <stan/math/prim/fun/quad_form.hpp>
 #include <stan/math/prim/fun/typedefs.hpp>
-#include <stan/math/prim/fun/value_of.hpp>
+#include <stan/math/prim/fun/quad_form.hpp>
 #include <type_traits>
 
 namespace stan {
@@ -123,7 +123,7 @@ inline auto quad_form_impl(const Mat1& A, const Mat2& B, bool symmetric) {
                                      * value_of(A) * value_of(B).eval()),
                             Mat1, Mat2>;
 
-  if (!is_constant<Mat1>::value && !is_constant<Mat2>::value) {
+  if constexpr (is_autodiff_v<Mat1> && is_autodiff_v<Mat2>) {
     arena_t<promote_scalar_t<var, Mat1>> arena_A = A;
     arena_t<promote_scalar_t<var, Mat2>> arena_B = B;
 
@@ -142,13 +142,13 @@ inline auto quad_form_impl(const Mat1& A, const Mat2& B, bool symmetric) {
     reverse_pass_callback([arena_A, arena_B, res]() mutable {
       auto C_adj_B_t = (res.adj() * value_of(arena_B).transpose()).eval();
 
-      if (is_var_matrix<Mat1>::value) {
+      if constexpr (is_var_matrix<Mat1>::value) {
         arena_A.adj().noalias() += value_of(arena_B) * C_adj_B_t;
       } else {
         arena_A.adj() += value_of(arena_B) * C_adj_B_t;
       }
 
-      if (is_var_matrix<Mat2>::value) {
+      if constexpr (is_var_matrix<Mat2>::value) {
         arena_B.adj().noalias()
             += value_of(arena_A) * C_adj_B_t.transpose()
                + value_of(arena_A).transpose() * value_of(arena_B) * res.adj();
@@ -160,7 +160,7 @@ inline auto quad_form_impl(const Mat1& A, const Mat2& B, bool symmetric) {
     });
 
     return res;
-  } else if (!is_constant<Mat2>::value) {
+  } else if constexpr (is_autodiff_v<Mat2>) {
     arena_t<promote_scalar_t<double, Mat1>> arena_A = value_of(A);
     arena_t<promote_scalar_t<var, Mat2>> arena_B = B;
 
@@ -179,7 +179,7 @@ inline auto quad_form_impl(const Mat1& A, const Mat2& B, bool symmetric) {
     reverse_pass_callback([arena_A, arena_B, res]() mutable {
       auto C_adj_B_t = (res.adj() * value_of(arena_B).transpose());
 
-      if (is_var_matrix<Mat2>::value) {
+      if constexpr (is_var_matrix<Mat2>::value) {
         arena_B.adj().noalias()
             += arena_A * C_adj_B_t.transpose()
                + arena_A.transpose() * value_of(arena_B) * res.adj();
@@ -209,7 +209,7 @@ inline auto quad_form_impl(const Mat1& A, const Mat2& B, bool symmetric) {
     reverse_pass_callback([arena_A, arena_B, res]() mutable {
       auto C_adj_B_t = (res.adj() * arena_B.transpose());
 
-      if (is_var_matrix<Mat1>::value) {
+      if constexpr (is_var_matrix<Mat1>::value) {
         arena_A.adj().noalias() += arena_B * C_adj_B_t;
       } else {
         arena_A.adj() += arena_B * C_adj_B_t;
@@ -278,7 +278,7 @@ inline var quad_form(const EigMat& A, const ColVec& B, bool symmetric = false) {
   auto* baseVari = new internal::quad_form_vari<
       value_type_t<EigMat>, EigMat::RowsAtCompileTime,
       EigMat::ColsAtCompileTime, value_type_t<ColVec>,
-      ColVec::RowsAtCompileTime, 1>(A, B, symmetric);
+      ColVec::RowsAtCompileTime, 1>(to_ref(A), to_ref(B), symmetric);
 
   return baseVari->impl_->C_(0, 0);
 }
@@ -309,7 +309,7 @@ template <typename Mat1, typename Mat2,
           require_not_col_vector_t<Mat2>* = nullptr,
           require_any_var_matrix_t<Mat1, Mat2>* = nullptr>
 inline auto quad_form(const Mat1& A, const Mat2& B, bool symmetric = false) {
-  return internal::quad_form_impl(A, B, symmetric);
+  return internal::quad_form_impl(to_ref(A), to_ref(B), symmetric);
 }
 
 /**

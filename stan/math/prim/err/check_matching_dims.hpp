@@ -30,7 +30,6 @@ inline void check_matching_dims(const char* function, const char* name1,
                                 const T1& y1, const char* name2, const T2& y2) {
   std::vector<int> y1_d = dims(y1);
   std::vector<int> y2_d = dims(y2);
-  bool error = false;
   auto error_throw = [&]() STAN_COLD_PATH {
     std::ostringstream y1s;
     if (y1_d.size() > 0) {
@@ -86,9 +85,11 @@ inline void check_matching_dims(const char* function, const char* name1,
     [&]() STAN_COLD_PATH {
       std::ostringstream y1_err;
       std::ostringstream msg_str;
-      y1_err << "(" << y1.rows() << ", " << y1.cols() << ")";
-      msg_str << y2.rows() << ", " << y2.cols() << ") must match in size";
-      invalid_argument(function, name1, y1_err.str(), "(",
+      y1_err << "(" << y1.rows() << ", " << y1.cols() << ") and ";
+      msg_str << " (" << y2.rows() << ", " << y2.cols()
+              << ") must match in size";
+      invalid_argument(function, name1, name2,
+                       std::string(y1_err.str()).c_str(),
                        std::string(msg_str.str()).c_str());
     }();
   }
@@ -152,6 +153,35 @@ inline void check_matching_dims(const char* function, const char* name1,
     }();
   }
   check_matching_dims(function, name1, y1, name2, y2);
+}
+
+/**
+ * Check that the unnamed Eigen inputs have the same dimensions. Inputs are
+ * labeled `arg1`, `arg2`, and so on in error messages.
+ *
+ * @tparam T type of the first input
+ * @tparam Types types of the remaining inputs
+ * @param function function name (for error messages)
+ * @param x first input
+ * @param xs remaining inputs
+ * @throw `invalid_argument` if dimensions do not match
+ */
+template <typename T, typename... Types,
+          require_all_eigen_t<T, Types...>* = nullptr>
+inline void check_matching_dims(const char* function, const T& x,
+                                const Types&... xs) {
+  std::size_t arg_idx = 2;
+  (
+      [&](const auto& y) {
+        if (x.rows() != y.rows() || x.cols() != y.cols()) {
+          [&]() STAN_COLD_PATH {
+            const std::string name = "arg" + std::to_string(arg_idx);
+            check_matching_dims(function, "arg1", x, name.c_str(), y);
+          }();
+        }
+        ++arg_idx;
+      }(xs),
+      ...);
 }
 
 }  // namespace math

@@ -7,9 +7,10 @@
 #include <stan/math/prim/meta.hpp>
 #include <stan/math/prim/err.hpp>
 #include <stan/math/prim/fun/digamma.hpp>
+#include <stan/math/prim/fun/log1p_exp.hpp>
 #include <stan/math/prim/fun/lgamma.hpp>
 #include <stan/math/prim/fun/max_size.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <stan/math/prim/fun/exp.hpp>
 
 namespace stan {
@@ -36,10 +37,10 @@ template <
     require_all_prim_or_rev_kernel_expression_t<T_y_cl, T_loc_cl,
                                                 T_scale_cl>* = nullptr,
     require_any_not_stan_scalar_t<T_y_cl, T_loc_cl, T_scale_cl>* = nullptr>
-return_type_t<T_y_cl, T_loc_cl, T_scale_cl> logistic_lpdf(
+inline return_type_t<T_y_cl, T_loc_cl, T_scale_cl> logistic_lpdf(
     const T_y_cl& y, const T_loc_cl& mu, const T_scale_cl& sigma) {
   using std::isfinite;
-  static const char* function = "logistic_lpdf(OpenCL)";
+  static constexpr const char* function = "logistic_lpdf(OpenCL)";
   using T_partials_return = partials_return_t<T_y_cl, T_loc_cl, T_scale_cl>;
 
   check_consistent_sizes(function, "Random variable", y, "Location parameter",
@@ -48,7 +49,7 @@ return_type_t<T_y_cl, T_loc_cl, T_scale_cl> logistic_lpdf(
   if (N == 0) {
     return 0.0;
   }
-  if (!include_summand<propto, T_y_cl, T_loc_cl, T_scale_cl>::value) {
+  if constexpr (!include_summand<propto, T_y_cl, T_loc_cl, T_scale_cl>::value) {
     return 0.0;
   }
 
@@ -60,8 +61,7 @@ return_type_t<T_y_cl, T_loc_cl, T_scale_cl> logistic_lpdf(
   const auto& mu_val = value_of(mu_col);
   const auto& sigma_val = value_of(sigma_col);
 
-  operands_and_partials<decltype(y_col), decltype(mu_col), decltype(sigma_col)>
-      ops_partials(y_col, mu_col, sigma_col);
+  auto ops_partials = make_partials_propagator(y_col, mu_col, sigma_col);
 
   auto check_y_finite = check_cl(function, "Random variable", y_val, "finite");
   auto y_finite = isfinite(y_val);
@@ -76,7 +76,7 @@ return_type_t<T_y_cl, T_loc_cl, T_scale_cl> logistic_lpdf(
   auto y_minus_mu = y_val - mu_val;
   auto y_minus_mu_div_sigma = elt_multiply(y_minus_mu, inv_sigma);
 
-  auto logp1 = -y_minus_mu_div_sigma - 2.0 * log1p(exp(-y_minus_mu_div_sigma));
+  auto logp1 = -y_minus_mu_div_sigma - 2.0 * log1p_exp(-y_minus_mu_div_sigma);
   auto logp_expr
       = colwise_sum(static_select<include_summand<propto, T_scale_cl>::value>(
           logp1 - log(sigma_val), logp1));
@@ -88,8 +88,8 @@ return_type_t<T_y_cl, T_loc_cl, T_scale_cl> logistic_lpdf(
       1.0
           - 2.0
                 * elt_divide(
-                      exp_mu_div_sigma,
-                      exp_mu_div_sigma + exp(elt_multiply(y_val, inv_sigma))),
+                    exp_mu_div_sigma,
+                    exp_mu_div_sigma + exp(elt_multiply(y_val, inv_sigma))),
       inv_sigma);
   auto sigma_deriv
       = elt_multiply(-elt_multiply(y_deriv, y_minus_mu) - 1.0, inv_sigma);
@@ -102,20 +102,20 @@ return_type_t<T_y_cl, T_loc_cl, T_scale_cl> logistic_lpdf(
   results(check_mu_finite, check_sigma_pos_finite, check_y_finite, logp_cl,
           y_deriv_cl, mu_deriv_cl, sigma_deriv_cl)
       = expressions(mu_finite, sigma_pos_finite, y_finite, logp_expr,
-                    calc_if<!is_constant<T_y_cl>::value>(y_deriv),
-                    calc_if<!is_constant<T_loc_cl>::value>(mu_deriv),
-                    calc_if<!is_constant<T_scale_cl>::value>(sigma_deriv));
+                    calc_if<is_autodiff_v<T_y_cl>>(y_deriv),
+                    calc_if<is_autodiff_v<T_loc_cl>>(mu_deriv),
+                    calc_if<is_autodiff_v<T_scale_cl>>(sigma_deriv));
 
   T_partials_return logp = sum(from_matrix_cl(logp_cl));
 
-  if (!is_constant<T_y_cl>::value) {
-    ops_partials.edge1_.partials_ = std::move(y_deriv_cl);
+  if constexpr (is_autodiff_v<T_y_cl>) {
+    partials<0>(ops_partials) = std::move(y_deriv_cl);
   }
-  if (!is_constant<T_loc_cl>::value) {
-    ops_partials.edge2_.partials_ = std::move(mu_deriv_cl);
+  if constexpr (is_autodiff_v<T_loc_cl>) {
+    partials<1>(ops_partials) = std::move(mu_deriv_cl);
   }
-  if (!is_constant<T_scale_cl>::value) {
-    ops_partials.edge3_.partials_ = std::move(sigma_deriv_cl);
+  if constexpr (is_autodiff_v<T_scale_cl>) {
+    partials<2>(ops_partials) = std::move(sigma_deriv_cl);
   }
 
   return ops_partials.build(logp);

@@ -15,7 +15,7 @@
 #include <stan/math/prim/fun/size_mvt.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
 #include <stan/math/prim/fun/vector_seq_view.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <vector>
 
 namespace stan {
@@ -72,21 +72,21 @@ namespace math {
 template <bool propto, typename T_y, typename T_loc, typename T_cut,
           require_all_not_nonscalar_prim_or_rev_kernel_expression_t<
               T_y, T_loc, T_cut>* = nullptr>
-return_type_t<T_loc, T_cut> ordered_logistic_lpmf(const T_y& y,
-                                                  const T_loc& lambda,
-                                                  const T_cut& c) {
+inline return_type_t<T_loc, T_cut> ordered_logistic_lpmf(const T_y& y,
+                                                         const T_loc& lambda,
+                                                         const T_cut& c) {
   using T_partials_return = partials_return_t<T_loc, T_cut>;
   using T_cuts_val = partials_return_t<T_cut>;
   using T_y_ref = ref_type_t<T_y>;
-  using T_lambda_ref = ref_type_if_t<!is_constant<T_loc>::value, T_loc>;
-  using T_cut_ref = ref_type_if_t<!is_constant<T_cut>::value, T_cut>;
+  using T_lambda_ref = ref_type_if_not_constant_t<T_loc>;
+  using T_cut_ref = ref_type_if_not_constant_t<T_cut>;
   using Eigen::Array;
   using Eigen::Dynamic;
-  static const char* function = "ordered_logistic";
+  static constexpr const char* function = "ordered_logistic";
 
   T_cut_ref c_ref = c;
   vector_seq_view<T_cut_ref> c_vec(c_ref);
-  int N = size(lambda);
+  int N = math::size(lambda);
   int C_l = size_mvt(c);
 
   check_consistent_sizes(function, "Integers", y, "Locations", lambda);
@@ -120,7 +120,7 @@ return_type_t<T_loc, T_cut> ordered_logistic_lpmf(const T_y& y,
       check_finite(function, "First cut-point", c_vec[i].coeff(0));
     }
   }
-  if (!include_summand<propto, T_loc, T_cut>::value) {
+  if constexpr (!include_summand<propto, T_loc, T_cut>::value) {
     return 0.0;
   }
 
@@ -150,7 +150,7 @@ return_type_t<T_loc, T_cut> ordered_logistic_lpmf(const T_y& y,
   auto m_log_1p_exp_m_cut2
       = (cut2 <= 0.0).select(cut2, 0) - (-cut2.abs()).exp().log1p();
 
-  if (is_vector<T_y>::value) {
+  if constexpr (is_vector<T_y>::value) {
     Eigen::Map<const Eigen::Matrix<value_type_t<T_y>, Eigen::Dynamic, 1>> y_vec(
         y_seq.data(), y_seq.size());
     auto log1m_exp_cuts_diff = log1m_exp(cut1 - cut2);
@@ -173,30 +173,30 @@ return_type_t<T_loc, T_cut> ordered_logistic_lpmf(const T_y& y,
     }
   }
 
-  operands_and_partials<T_lambda_ref, T_cut_ref> ops_partials(lambda_ref,
-                                                              c_ref);
-  if (!is_constant_all<T_loc, T_cut>::value) {
-    Array<T_partials_return, Dynamic, 1> exp_m_cut1 = exp(-cut1);
-    Array<T_partials_return, Dynamic, 1> exp_m_cut2 = exp(-cut2);
+  auto ops_partials = make_partials_propagator(lambda_ref, c_ref);
+  if constexpr (is_any_autodiff_v<T_loc, T_cut>) {
+    Array<T_partials_return, Dynamic, 1> exp_m_abs_cut1 = (-cut1.abs()).exp();
+    Array<T_partials_return, Dynamic, 1> exp_m_abs_cut2 = (-cut2.abs()).exp();
     Array<T_partials_return, Dynamic, 1> exp_cuts_diff = exp(cuts_y2 - cuts_y1);
+    Array<T_partials_return, Dynamic, 1> inv_logit_neg_cut2 = (cut2 > 0).select(
+        exp_m_abs_cut2 / (1 + exp_m_abs_cut2), 1 / (1 + exp_m_abs_cut2));
+    Array<T_partials_return, Dynamic, 1> inv_logit_neg_cut1 = (cut1 > 0).select(
+        exp_m_abs_cut1 / (1 + exp_m_abs_cut1), 1 / (1 + exp_m_abs_cut1));
     Array<T_partials_return, Dynamic, 1> d1
-        = (cut2 > 0).select(exp_m_cut2 / (1 + exp_m_cut2), 1 / (1 + exp(cut2)))
-          - exp_cuts_diff / (exp_cuts_diff - 1);
+        = inv_logit_neg_cut2 - exp_cuts_diff / (exp_cuts_diff - 1);
     Array<T_partials_return, Dynamic, 1> d2
-        = 1 / (1 - exp_cuts_diff)
-          - (cut1 > 0).select(exp_m_cut1 / (1 + exp_m_cut1),
-                              1 / (1 + exp(cut1)));
-    if (!is_constant_all<T_loc>::value) {
-      ops_partials.edge1_.partials_ = d1 - d2;
+        = 1 / (1 - exp_cuts_diff) - inv_logit_neg_cut1;
+    if constexpr (is_autodiff_v<T_loc>) {
+      partials<0>(ops_partials) = d1 - d2;
     }
-    if (!is_constant_all<T_cut>::value) {
+    if constexpr (is_autodiff_v<T_cut>) {
       for (int i = 0; i < N; i++) {
         int c = y_seq[i];
         if (c != K) {
-          ops_partials.edge2_.partials_vec_[i][c - 1] += d2.coeff(i);
+          partials_vec<1>(ops_partials)[i][c - 1] += d2.coeff(i);
         }
         if (c != 1) {
-          ops_partials.edge2_.partials_vec_[i][c - 2] -= d1.coeff(i);
+          partials_vec<1>(ops_partials)[i][c - 2] -= d1.coeff(i);
         }
       }
     }
@@ -205,9 +205,9 @@ return_type_t<T_loc, T_cut> ordered_logistic_lpmf(const T_y& y,
 }
 
 template <typename T_y, typename T_loc, typename T_cut>
-return_type_t<T_loc, T_cut> ordered_logistic_lpmf(const T_y& y,
-                                                  const T_loc& lambda,
-                                                  const T_cut& c) {
+inline return_type_t<T_loc, T_cut> ordered_logistic_lpmf(const T_y& y,
+                                                         const T_loc& lambda,
+                                                         const T_cut& c) {
   return ordered_logistic_lpmf<false>(y, lambda, c);
 }
 

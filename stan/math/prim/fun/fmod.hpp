@@ -9,7 +9,22 @@ namespace stan {
 namespace math {
 
 /**
- * Enables the vectorised application of the fmod function,
+ * Returns the floating-point remainder of
+ * numerator/denominator (rounded towards zero).
+ *
+ * @tparam T1 type of the numerator (must be arithmetic)
+ * @tparam T2 type of the denominator (must be arithmetic)
+ * @param a the numerator
+ * @param b the denominator
+ * @return the floating-point remainder of a/b.
+ */
+template <typename T1, typename T2, require_all_arithmetic_t<T1, T2>* = nullptr>
+inline double fmod(const T1& a, const T2& b) {
+  return std::fmod(a, b);
+}
+
+/**
+ * Enables the vectorized application of the fmod function,
  * when the first and/or second arguments are containers.
  *
  * @tparam T1 type of first input
@@ -19,11 +34,12 @@ namespace math {
  * @return fmod function applied to the two inputs.
  */
 template <typename T1, typename T2, require_any_container_t<T1, T2>* = nullptr>
-inline auto fmod(const T1& a, const T2& b) {
-  return apply_scalar_binary(a, b, [&](const auto& c, const auto& d) {
-    using std::fmod;
-    return fmod(c, d);
-  });
+inline auto fmod(T1&& a, T2&& b) {
+  return apply_scalar_binary(
+      [](auto&& c, auto&& d) {
+        return fmod(std::forward<decltype(c)>(c), std::forward<decltype(d)>(d));
+      },
+      std::forward<T1>(a), std::forward<T2>(b));
 }
 
 }  // namespace math

@@ -3,9 +3,8 @@
 
 #include <stan/math/rev/meta.hpp>
 #include <stan/math/rev/fun/value_of.hpp>
+#include <stan/math/rev/functor/partials_propagator.hpp>
 #include <stan/math/prim/fun/log_mix.hpp>
-#include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
 #include <cmath>
 
 namespace stan {
@@ -80,8 +79,7 @@ inline return_type_t<T_theta, T_lambda1, T_lambda2> log_mix(
     const T_theta& theta, const T_lambda1& lambda1, const T_lambda2& lambda2) {
   using std::log;
 
-  operands_and_partials<T_theta, T_lambda1, T_lambda2> ops_partials(
-      theta, lambda1, lambda2);
+  auto ops_partials = make_partials_propagator(theta, lambda1, lambda2);
 
   double theta_double = value_of(theta);
   const double lambda1_double = value_of(lambda1);
@@ -107,18 +105,17 @@ inline return_type_t<T_theta, T_lambda1, T_lambda2> log_mix(
     one_m_t_prod_exp_lam2_m_lam1 = 1.0 - value_of(theta);
   }
 
-  if (!is_constant_all<T_theta>::value) {
-    ops_partials.edge1_.partials_[0]
+  if constexpr (is_autodiff_v<T_theta>) {
+    partials<0>(ops_partials)[0]
         = one_m_exp_lam2_m_lam1 * one_d_t_plus_one_m_t_prod_exp_lam2_m_lam1;
   }
-  if (!is_constant_all<T_lambda1>::value) {
-    ops_partials.edge2_.partials_[0]
+  if constexpr (is_autodiff_v<T_lambda1>) {
+    partials<1>(ops_partials)[0]
         = theta_double * one_d_t_plus_one_m_t_prod_exp_lam2_m_lam1;
   }
-  if (!is_constant_all<T_lambda2>::value) {
-    ops_partials.edge3_.partials_[0]
-        = one_m_t_prod_exp_lam2_m_lam1
-          * one_d_t_plus_one_m_t_prod_exp_lam2_m_lam1;
+  if constexpr (is_autodiff_v<T_lambda2>) {
+    partials<2>(ops_partials)[0] = one_m_t_prod_exp_lam2_m_lam1
+                                   * one_d_t_plus_one_m_t_prod_exp_lam2_m_lam1;
   }
 
   return ops_partials.build(log_mix_function_value);

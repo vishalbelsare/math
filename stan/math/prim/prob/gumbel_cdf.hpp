@@ -12,7 +12,7 @@
 #include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/to_ref.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <cmath>
 
 namespace stan {
@@ -36,14 +36,14 @@ namespace math {
 template <typename T_y, typename T_loc, typename T_scale,
           require_all_not_nonscalar_prim_or_rev_kernel_expression_t<
               T_y, T_loc, T_scale>* = nullptr>
-return_type_t<T_y, T_loc, T_scale> gumbel_cdf(const T_y& y, const T_loc& mu,
-                                              const T_scale& beta) {
+inline return_type_t<T_y, T_loc, T_scale> gumbel_cdf(const T_y& y,
+                                                     const T_loc& mu,
+                                                     const T_scale& beta) {
   using T_partials_return = partials_return_t<T_y, T_loc, T_scale>;
-  using T_partials_array = Eigen::Array<T_partials_return, Eigen::Dynamic, 1>;
-  using T_y_ref = ref_type_if_t<!is_constant<T_y>::value, T_y>;
-  using T_mu_ref = ref_type_if_t<!is_constant<T_loc>::value, T_loc>;
-  using T_beta_ref = ref_type_if_t<!is_constant<T_scale>::value, T_scale>;
-  static const char* function = "gumbel_cdf";
+  using T_y_ref = ref_type_if_not_constant_t<T_y>;
+  using T_mu_ref = ref_type_if_not_constant_t<T_loc>;
+  using T_beta_ref = ref_type_if_not_constant_t<T_scale>;
+  static constexpr const char* function = "gumbel_cdf";
   check_consistent_sizes(function, "Random variable", y, "Location parameter",
                          mu, "Scale parameter", beta);
   T_y_ref y_ref = y;
@@ -62,41 +62,37 @@ return_type_t<T_y, T_loc, T_scale> gumbel_cdf(const T_y& y, const T_loc& mu,
     return 1.0;
   }
 
-  operands_and_partials<T_y_ref, T_mu_ref, T_beta_ref> ops_partials(
-      y_ref, mu_ref, beta_ref);
+  auto ops_partials = make_partials_propagator(y_ref, mu_ref, beta_ref);
 
-  const auto& scaled_diff
-      = to_ref_if<!is_constant_all<T_y, T_loc, T_scale>::value>((y_val - mu_val)
-                                                                / beta_val);
+  const auto& scaled_diff = to_ref_if<is_any_autodiff_v<T_y, T_loc, T_scale>>(
+      (y_val - mu_val) / beta_val);
   const auto& exp_m_scaled_diff
-      = to_ref_if<!is_constant_all<T_y, T_loc, T_scale>::value>(
-          exp(-scaled_diff));
-  const auto& cdf_n = to_ref_if<!is_constant_all<T_y, T_loc, T_scale>::value>(
+      = to_ref_if<is_any_autodiff_v<T_y, T_loc, T_scale>>(exp(-scaled_diff));
+  const auto& cdf_n = to_ref_if<is_any_autodiff_v<T_y, T_loc, T_scale>>(
       exp(-exp_m_scaled_diff));
 
   T_partials_return cdf(1.0);
-  if (is_vector<T_y>::value || is_vector<T_loc>::value
-      || is_vector<T_scale>::value) {
-    cdf = forward_as<T_partials_array>(cdf_n).prod();
+  if constexpr (is_vector<T_y>::value || is_vector<T_loc>::value
+                || is_vector<T_scale>::value) {
+    cdf = cdf_n.prod();
   } else {
-    cdf = forward_as<T_partials_return>(cdf_n);
+    cdf = cdf_n;
   }
 
-  if (!is_constant_all<T_y, T_loc, T_scale>::value) {
+  if constexpr (is_any_autodiff_v<T_y, T_loc, T_scale>) {
     const auto& rep_deriv_tmp = exp(-scaled_diff - exp_m_scaled_diff);
-    const auto& rep_deriv
-        = to_ref_if<!is_constant_all<T_loc>::value
-                        + !is_constant_all<T_scale>::value
-                        + !is_constant_all<T_y>::value
-                    >= 2>(cdf * rep_deriv_tmp / (beta_val * cdf_n));
-    if (!is_constant_all<T_y>::value) {
-      ops_partials.edge1_.partials_ = rep_deriv;
+    const auto& rep_deriv = to_ref_if<
+        is_autodiff_v<
+            T_loc> + is_autodiff_v<T_scale> + is_autodiff_v<T_y> >= 2>(
+        cdf * rep_deriv_tmp / (beta_val * cdf_n));
+    if constexpr (is_autodiff_v<T_y>) {
+      partials<0>(ops_partials) = rep_deriv;
     }
-    if (!is_constant_all<T_loc>::value) {
-      ops_partials.edge2_.partials_ = -rep_deriv;
+    if constexpr (is_autodiff_v<T_loc>) {
+      partials<1>(ops_partials) = -rep_deriv;
     }
-    if (!is_constant_all<T_scale>::value) {
-      ops_partials.edge3_.partials_ = -rep_deriv * scaled_diff;
+    if constexpr (is_autodiff_v<T_scale>) {
+      partials<2>(ops_partials) = -rep_deriv * scaled_diff;
     }
   }
   return ops_partials.build(cdf);

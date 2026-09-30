@@ -10,7 +10,7 @@
 #include <stan/math/prim/fun/constants.hpp>
 #include <stan/math/prim/fun/elt_divide.hpp>
 #include <stan/math/prim/fun/elt_multiply.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <stan/math/prim/err/constraint_tolerance.hpp>
 
 namespace stan {
@@ -41,7 +41,7 @@ template <bool propto, typename T_y_cl, typename T_loc_cl, typename T_covar_cl,
                                                       T_covar_cl>* = nullptr>
 inline return_type_t<T_y_cl, T_loc_cl, T_covar_cl> multi_normal_cholesky_lpdf(
     const T_y_cl& y, const T_loc_cl& mu, const T_covar_cl& L) {
-  static const char* function = "multi_normal_cholesky_lpdf(OpenCL)";
+  static constexpr const char* function = "multi_normal_cholesky_lpdf(OpenCL)";
 
   check_consistent_sizes(function, "y", y, "mu", mu);
   check_square(function, "covariance parameter", L);
@@ -51,7 +51,7 @@ inline return_type_t<T_y_cl, T_loc_cl, T_covar_cl> multi_normal_cholesky_lpdf(
   if (max_size(y, mu, L) == 0) {
     return 0.0;
   }
-  if (!include_summand<propto, T_y_cl, T_loc_cl, T_covar_cl>::value) {
+  if constexpr (!include_summand<propto, T_y_cl, T_loc_cl, T_covar_cl>::value) {
     return 0.0;
   }
 
@@ -63,7 +63,7 @@ inline return_type_t<T_y_cl, T_loc_cl, T_covar_cl> multi_normal_cholesky_lpdf(
   int N_cases = std::max(y_val.cols(), mu_val.cols());
 
   double logp = 0;
-  if (include_summand<propto>::value) {
+  if constexpr (include_summand<propto>::value) {
     logp += NEG_LOG_SQRT_TWO_PI * L_size * N_cases;
   }
 
@@ -108,7 +108,7 @@ inline return_type_t<T_y_cl, T_loc_cl, T_covar_cl> multi_normal_cholesky_lpdf(
         = expressions(mu_finite, y_not_nan, y_mu_diff);
   }
 
-  if (include_summand<propto, T_covar_cl>::value) {
+  if constexpr (include_summand<propto, T_covar_cl>::value) {
     logp += sum(from_matrix_cl(sum_log_diag_inv_L_cl)) * N_cases;
   }
 
@@ -116,25 +116,24 @@ inline return_type_t<T_y_cl, T_loc_cl, T_covar_cl> multi_normal_cholesky_lpdf(
   matrix_cl<double> scaled_diff = transpose(half * inv_L);
   logp -= 0.5 * dot_self(half);
 
-  operands_and_partials<T_y_cl, T_loc_cl, T_covar_cl> ops_partials(y, mu, L);
+  auto ops_partials = make_partials_propagator(y, mu, L);
 
-  if (!is_constant_all<T_y_cl>::value) {
+  if constexpr (is_autodiff_v<T_y_cl>) {
     if (y_val.cols() == 1) {
-      ops_partials.edge1_.partials_ = -rowwise_sum(scaled_diff);
+      partials<0>(ops_partials) = -rowwise_sum(scaled_diff);
     } else {
-      ops_partials.edge1_.partials_ = -scaled_diff;
+      partials<0>(ops_partials) = -scaled_diff;
     }
   }
-  if (!is_constant_all<T_loc_cl>::value) {
+  if constexpr (is_autodiff_v<T_loc_cl>) {
     if (mu_val.cols() == 1) {
-      ops_partials.edge2_.partials_ = rowwise_sum(scaled_diff);
+      partials<1>(ops_partials) = rowwise_sum(scaled_diff);
     } else {
-      ops_partials.edge2_.partials_ = scaled_diff;
+      partials<1>(ops_partials) = scaled_diff;
     }
   }
-  if (!is_constant_all<T_covar_cl>::value) {
-    ops_partials.edge3_.partials_
-        = scaled_diff * half - N_cases * transpose(inv_L);
+  if constexpr (is_autodiff_v<T_covar_cl>) {
+    partials<2>(ops_partials) = scaled_diff * half - N_cases * transpose(inv_L);
   }
 
   return ops_partials.build(logp);

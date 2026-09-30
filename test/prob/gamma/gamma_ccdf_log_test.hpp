@@ -1,5 +1,7 @@
 // Arguments: Doubles, Doubles, Doubles
-#include <stan/math/prim.hpp>
+#include <stan/math/prim/prob/gamma_ccdf_log.hpp>
+#include <stan/math/prim/fun/log1m.hpp>
+#include <stan/math/prim/fun/gamma_p.hpp>
 
 using stan::math::var;
 using std::numeric_limits;
@@ -90,7 +92,6 @@ class AgradCcdfLogGamma : public AgradCcdfLogTest {
   stan::return_type_t<T_y, T_shape, T_inv_scale> ccdf_log_function(
       const T_y& y, const T_shape& alpha, const T_inv_scale& beta, const T3&,
       const T4&, const T5&) {
-    using boost::math::gamma_p;
     using stan::math::gamma_p;
     using stan::math::log1m;
 

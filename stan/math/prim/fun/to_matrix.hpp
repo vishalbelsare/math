@@ -11,18 +11,55 @@ namespace math {
 
 /**
  * Returns a matrix with dynamic dimensions constructed from an
- * Eigen matrix which is either a row vector, column vector,
- * or matrix.
- * The runtime dimensions will be the same as the input.
+ * Eigen matrix.
  *
  * @tparam EigMat type of the matrix
  *
  * @param x matrix
  * @return the matrix representation of the input
  */
-template <typename EigMat, require_eigen_t<EigMat>* = nullptr>
+template <typename EigMat, require_eigen_dense_dynamic_t<EigMat>* = nullptr>
 inline EigMat to_matrix(EigMat&& x) {
   return std::forward<EigMat>(x);
+}
+
+/**
+ * Returns a matrix with dynamic dimensions constructed from an
+ * Eigen row or column vector.
+ * The runtime dimensions will be the same as the input.
+ *
+ * @tparam EigMat type of the vector/row vector
+ *
+ * @param matrix input vector/row vector
+ * @return the matrix representation of the input
+ */
+template <typename EigVec, require_eigen_vector_t<EigVec>* = nullptr>
+inline auto to_matrix(EigVec&& matrix) {
+  return Eigen::Matrix<value_type_t<EigVec>, Eigen::Dynamic, Eigen::Dynamic>(
+      std::forward<EigVec>(matrix));
+}
+
+/**
+ * Returns a matrix representation of a standard vector of Eigen
+ * column vectors. Each input vector becomes a column in the result.
+ *
+ * @tparam T type of the elements in the vector
+ * @param x standard vector of Eigen column vectors
+ * @return the matrix representation of the input
+ */
+template <typename T>
+inline Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> to_matrix(
+    const std::vector<Eigen::Matrix<T, Eigen::Dynamic, 1>>& x) {
+  int cols = x.size();
+  if (cols == 0) {
+    return {};
+  }
+  int rows = x[0].size();
+  Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> result(rows, cols);
+  for (int j = 0; j < cols; ++j) {
+    result.col(j) = x[j];
+  }
+  return result;
 }
 
 /**
@@ -92,7 +129,7 @@ to_matrix(const std::vector<std::vector<T>>& x) {
 template <typename EigMat, require_eigen_t<EigMat>* = nullptr>
 inline Eigen::Matrix<value_type_t<EigMat>, Eigen::Dynamic, Eigen::Dynamic>
 to_matrix(EigMat&& x, int m, int n) {
-  static const char* function = "to_matrix(matrix)";
+  static constexpr const char* function = "to_matrix(matrix)";
   check_size_match(function, "rows * columns", m * n, "vector size", x.size());
   Eigen::Matrix<value_type_t<EigMat>, Eigen::Dynamic, Eigen::Dynamic> y
       = std::forward<EigMat>(x);
@@ -112,35 +149,24 @@ to_matrix(EigMat&& x, int m, int n) {
  * @throw <code>std::invalid_argument</code>
  * if the sizes do not match
  */
-template <typename T>
-inline auto to_matrix(const std::vector<T>& x, int m, int n) {
-  static const char* function = "to_matrix(array)";
+template <typename T, require_std_vector_vt<is_stan_scalar, T>* = nullptr>
+inline auto to_matrix(T&& x, int m, int n) {
+  static constexpr const char* function = "to_matrix(array)";
   check_size_match(function, "rows * columns", m * n, "vector size", x.size());
-  return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>(
-      &x[0], m, n);
-}
-
-/**
- * Returns a matrix representation of the vector in column-major
- * order with the specified number of rows and columns.
- *
- * @param x vector of values
- * @param m rows
- * @param n columns
- * @return the matrix representation of the input
- * @throw <code>std::invalid_argument</code>
- * if the sizes do not match
- */
-inline Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> to_matrix(
-    const std::vector<int>& x, int m, int n) {
-  static const char* function = "to_matrix(array)";
-  int x_size = x.size();
-  check_size_match(function, "rows * columns", m * n, "vector size", x_size);
-  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> result(m, n);
-  for (int i = 0; i < x_size; i++) {
-    result.coeffRef(i) = x[i];
-  }
-  return result;
+  return make_holder(
+      [m, n](auto&& x_) {
+        if constexpr (std::is_integral_v<value_type_t<decltype(x_)>>) {
+          return Eigen::Map<const Eigen::Matrix<
+              value_type_t<decltype(x_)>, Eigen::Dynamic, Eigen::Dynamic>>(
+                     &x_[0], m, n)
+              .template cast<double>();
+        } else {
+          return Eigen::Map<const Eigen::Matrix<
+              value_type_t<decltype(x_)>, Eigen::Dynamic, Eigen::Dynamic>>(
+              &x_[0], m, n);
+        }
+      },
+      std::forward<T>(x));
 }
 
 /**

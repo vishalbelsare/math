@@ -12,7 +12,7 @@
 #include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/to_ref.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 
 namespace stan {
 namespace math {
@@ -20,11 +20,12 @@ namespace math {
 template <typename T_y, typename T_scale,
           require_all_not_nonscalar_prim_or_rev_kernel_expression_t<
               T_y, T_scale>* = nullptr>
-return_type_t<T_y, T_scale> rayleigh_lccdf(const T_y& y, const T_scale& sigma) {
+inline return_type_t<T_y, T_scale> rayleigh_lccdf(const T_y& y,
+                                                  const T_scale& sigma) {
   using T_partials_return = partials_return_t<T_y, T_scale>;
-  using T_y_ref = ref_type_if_t<!is_constant<T_y>::value, T_y>;
-  using T_sigma_ref = ref_type_if_t<!is_constant<T_scale>::value, T_scale>;
-  static const char* function = "rayleigh_lccdf";
+  using T_y_ref = ref_type_if_not_constant_t<T_y>;
+  using T_sigma_ref = ref_type_if_not_constant_t<T_scale>;
+  static constexpr const char* function = "rayleigh_lccdf";
   check_consistent_sizes(function, "Random variable", y, "Scale parameter",
                          sigma);
 
@@ -41,21 +42,20 @@ return_type_t<T_y, T_scale> rayleigh_lccdf(const T_y& y, const T_scale& sigma) {
     return 0;
   }
 
-  operands_and_partials<T_y_ref, T_sigma_ref> ops_partials(y_ref, sigma_ref);
+  auto ops_partials = make_partials_propagator(y_ref, sigma_ref);
 
-  const auto& inv_sigma
-      = to_ref_if<!is_constant_all<T_scale>::value>(inv(sigma_val));
+  const auto& inv_sigma = to_ref_if<is_autodiff_v<T_scale>>(inv(sigma_val));
   const auto& y_div_sigma_square
-      = to_ref_if<!is_constant_all<T_y>::value>(y_val * inv_sigma * inv_sigma);
+      = to_ref_if<is_autodiff_v<T_y>>(y_val * inv_sigma * inv_sigma);
   const auto& y_square_div_sigma_square
-      = to_ref_if<!is_constant_all<T_scale>::value>(y_val * y_div_sigma_square);
+      = to_ref_if<is_autodiff_v<T_scale>>(y_val * y_div_sigma_square);
   T_partials_return ccdf_log = -0.5 * sum(y_square_div_sigma_square);
 
-  if (!is_constant_all<T_y>::value) {
-    ops_partials.edge1_.partials_ = -y_div_sigma_square;
+  if constexpr (is_autodiff_v<T_y>) {
+    partials<0>(ops_partials) = -y_div_sigma_square;
   }
-  if (!is_constant_all<T_scale>::value) {
-    ops_partials.edge2_.partials_ = y_square_div_sigma_square * inv_sigma;
+  if constexpr (is_autodiff_v<T_scale>) {
+    partials<1>(ops_partials) = y_square_div_sigma_square * inv_sigma;
   }
 
   return ops_partials.build(ccdf_log);

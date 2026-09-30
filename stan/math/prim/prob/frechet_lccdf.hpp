@@ -16,7 +16,7 @@
 #include <stan/math/prim/fun/value_of.hpp>
 #include <boost/random/weibull_distribution.hpp>
 #include <boost/random/variate_generator.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <cmath>
 
 namespace stan {
@@ -25,14 +25,13 @@ namespace math {
 template <typename T_y, typename T_shape, typename T_scale,
           require_all_not_nonscalar_prim_or_rev_kernel_expression_t<
               T_y, T_shape, T_scale>* = nullptr>
-return_type_t<T_y, T_shape, T_scale> frechet_lccdf(const T_y& y,
-                                                   const T_shape& alpha,
-                                                   const T_scale& sigma) {
+inline return_type_t<T_y, T_shape, T_scale> frechet_lccdf(
+    const T_y& y, const T_shape& alpha, const T_scale& sigma) {
   using T_partials_return = partials_return_t<T_y, T_shape, T_scale>;
   using T_y_ref = ref_type_t<T_y>;
   using T_alpha_ref = ref_type_t<T_shape>;
   using T_sigma_ref = ref_type_t<T_scale>;
-  static const char* function = "frechet_lccdf";
+  static constexpr const char* function = "frechet_lccdf";
   T_y_ref y_ref = y;
   T_alpha_ref alpha_ref = alpha;
   T_sigma_ref sigma_ref = sigma;
@@ -46,8 +45,7 @@ return_type_t<T_y, T_shape, T_scale> frechet_lccdf(const T_y& y,
   }
 
   T_partials_return ccdf_log(0.0);
-  operands_and_partials<T_y_ref, T_alpha_ref, T_sigma_ref> ops_partials(
-      y_ref, alpha_ref, sigma_ref);
+  auto ops_partials = make_partials_propagator(y_ref, alpha_ref, sigma_ref);
 
   scalar_seq_view<T_y> y_vec(y_ref);
   scalar_seq_view<T_scale> sigma_vec(sigma_ref);
@@ -64,14 +62,14 @@ return_type_t<T_y, T_shape, T_scale> frechet_lccdf(const T_y& y,
     ccdf_log += log1m(exp_n);
 
     const T_partials_return rep_deriv = pow_n / (1.0 / exp_n - 1);
-    if (!is_constant_all<T_y>::value) {
-      ops_partials.edge1_.partials_[n] -= alpha_dbl / y_dbl * rep_deriv;
+    if constexpr (is_autodiff_v<T_y>) {
+      partials<0>(ops_partials)[n] -= alpha_dbl / y_dbl * rep_deriv;
     }
-    if (!is_constant_all<T_shape>::value) {
-      ops_partials.edge2_.partials_[n] -= log(y_dbl / sigma_dbl) * rep_deriv;
+    if constexpr (is_autodiff_v<T_shape>) {
+      partials<1>(ops_partials)[n] -= log(y_dbl / sigma_dbl) * rep_deriv;
     }
-    if (!is_constant_all<T_scale>::value) {
-      ops_partials.edge3_.partials_[n] += alpha_dbl / sigma_dbl * rep_deriv;
+    if constexpr (is_autodiff_v<T_scale>) {
+      partials<2>(ops_partials)[n] += alpha_dbl / sigma_dbl * rep_deriv;
     }
   }
   return ops_partials.build(ccdf_log);

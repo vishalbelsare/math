@@ -7,7 +7,7 @@
 #include <stan/math/prim/fun/constants.hpp>
 #include <stan/math/prim/fun/log.hpp>
 #include <stan/math/opencl/kernel_generator.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 
 namespace stan {
 namespace math {
@@ -28,22 +28,21 @@ template <bool propto, typename T_n_cl, typename T_log_rate_cl,
           require_all_prim_or_rev_kernel_expression_t<T_n_cl,
                                                       T_log_rate_cl>* = nullptr,
           require_any_not_stan_scalar_t<T_n_cl, T_log_rate_cl>* = nullptr>
-return_type_t<T_log_rate_cl> poisson_log_lpmf(const T_n_cl& n,
-                                              const T_log_rate_cl& alpha) {
-  static const char* function = "poisson_log_lpmf(OpenCL)";
+inline return_type_t<T_log_rate_cl> poisson_log_lpmf(
+    const T_n_cl& n, const T_log_rate_cl& alpha) {
+  static constexpr const char* function = "poisson_log_lpmf(OpenCL)";
   using T_partials_return = partials_return_t<T_log_rate_cl>;
   using std::isinf;
   using std::isnan;
   constexpr bool is_n_vector = !is_stan_scalar<T_n_cl>::value;
-  constexpr bool is_alpha_vector = !is_stan_scalar<T_log_rate_cl>::value;
 
   check_consistent_sizes(function, "Random variable", n, "Log rate parameter",
                          alpha);
-  const size_t N = is_n_vector ? size(n) : size(alpha);
+  const size_t N = is_n_vector ? math::size(n) : math::size(alpha);
   if (N == 0) {
     return 0.0;
   }
-  if (!include_summand<propto, T_log_rate_cl>::value) {
+  if constexpr (!include_summand<propto, T_log_rate_cl>::value) {
     return 0.0;
   }
 
@@ -51,7 +50,7 @@ return_type_t<T_log_rate_cl> poisson_log_lpmf(const T_n_cl& n,
   const auto& alpha_val = value_of(alpha_col);
 
   T_partials_return logp(0.0);
-  operands_and_partials<decltype(alpha_col)> ops_partials(alpha_col);
+  auto ops_partials = make_partials_propagator(alpha_col);
 
   auto check_n_nonnegative
       = check_cl(function, "Random variable", n, "nonnegative");
@@ -79,7 +78,7 @@ return_type_t<T_log_rate_cl> poisson_log_lpmf(const T_n_cl& n,
   results(check_n_nonnegative, check_alpha_not_nan, return_log_zero_cl, logp_cl,
           deriv_cl)
       = expressions(n_nonnegativer, alpha_not_nan, return_log_zero, logp_expr,
-                    calc_if<!is_constant_all<T_log_rate_cl>::value>(deriv));
+                    calc_if<is_autodiff_v<T_log_rate_cl>>(deriv));
 
   if (from_matrix_cl(return_log_zero_cl).any()) {
     return LOG_ZERO;
@@ -87,8 +86,8 @@ return_type_t<T_log_rate_cl> poisson_log_lpmf(const T_n_cl& n,
 
   logp = sum(from_matrix_cl(logp_cl));
 
-  if (!is_constant_all<T_log_rate_cl>::value) {
-    ops_partials.edge1_.partials_ = deriv_cl;
+  if constexpr (is_autodiff_v<T_log_rate_cl>) {
+    partials<0>(ops_partials) = deriv_cl;
   }
 
   return ops_partials.build(logp);

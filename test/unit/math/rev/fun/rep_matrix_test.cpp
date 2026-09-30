@@ -1,13 +1,13 @@
 #include <stan/math/rev.hpp>
-#include <gtest/gtest.h>
 #include <test/unit/math/rev/util.hpp>
 #include <test/unit/util.hpp>
 #include <test/unit/pretty_print_types.hpp>
+#include <gtest/gtest.h>
 #include <limits>
 #include <string>
 #include <vector>
 
-TEST(MathMixMatFun, repMatrixVar) {
+TEST_F(AgradRev, MathMixMatFun_repMatrixVar) {
   using stan::math::rep_matrix;
   using stan::math::sum;
   using stan::math::var;
@@ -33,13 +33,14 @@ TEST(MathMixMatFun, repMatrixVar) {
   EXPECT_EQ(x4.cols(), 2);
 }
 
-TEST(MathMixMatFun, repVarMatrix) {
+TEST_F(AgradRev, MathMixMatFun_repVarMatrix) {
   using stan::math::rep_matrix;
   using stan::math::sum;
   using stan::math::var;
   using stan::math::var_value;
+  using var_matrix = var_value<Eigen::MatrixXd>;
   auto x_var = var(1.0);
-  auto x = rep_matrix<var_value<Eigen::MatrixXd>>(x_var, 5, 5);
+  auto x = rep_matrix<var_matrix>(x_var, 5, 5);
   EXPECT_TRUE(stan::is_var_matrix<decltype(x)>::value);
   auto x_sum = sum(x);
   x_sum.grad();
@@ -48,13 +49,14 @@ TEST(MathMixMatFun, repVarMatrix) {
   EXPECT_EQ(x_var.adj(), 25.0);
 }
 
-TEST(MathMixMatFun, repVarMatrixVec) {
+TEST_F(AgradRev, MathMixMatFun_repVarMatrixVec) {
   using stan::math::rep_matrix;
   using stan::math::sum;
   using stan::math::var;
   using stan::math::var_value;
+  using var_matrix = var_value<Eigen::MatrixXd>;
   var_value<Eigen::VectorXd> x_var(Eigen::VectorXd::Ones(5));
-  auto x = rep_matrix(x_var, 5);
+  auto x = rep_matrix<var_matrix>(x_var, 5);
   EXPECT_TRUE(stan::is_var_matrix<decltype(x)>::value);
   auto x_sum = sum(x);
   x_sum.grad();
@@ -65,13 +67,14 @@ TEST(MathMixMatFun, repVarMatrixVec) {
   EXPECT_MATRIX_EQ(x_var.adj(), expected_x_var_adjs);
 }
 
-TEST(MathMixMatFun, repVarMatrixRowVec) {
+TEST_F(AgradRev, MathMixMatFun_repVarMatrixRowVec) {
   using stan::math::rep_matrix;
   using stan::math::sum;
   using stan::math::var;
   using stan::math::var_value;
+  using var_matrix = var_value<Eigen::MatrixXd>;
   var_value<Eigen::RowVectorXd> x_var(Eigen::RowVectorXd::Ones(5));
-  auto x = rep_matrix(x_var, 5);
+  auto x = rep_matrix<var_matrix>(x_var, 5);
   EXPECT_TRUE(stan::is_var_matrix<decltype(x)>::value);
   auto x_sum = sum(x);
   x_sum.grad();

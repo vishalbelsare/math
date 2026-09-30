@@ -16,13 +16,15 @@ namespace math {
  */
 template <typename EigMat, require_eigen_matrix_dynamic_t<EigMat>* = nullptr,
           require_not_st_var<EigMat>* = nullptr>
-Eigen::Matrix<value_type_t<EigMat>, Eigen::Dynamic, Eigen::Dynamic> svd_U(
-    const EigMat& m) {
-  check_nonzero_size("svd_U", "m", m);
-
-  return Eigen::JacobiSVD<Eigen::Matrix<value_type_t<EigMat>, Eigen::Dynamic,
-                                        Eigen::Dynamic> >(m,
-                                                          Eigen::ComputeThinU)
+inline Eigen::Matrix<value_type_t<EigMat>, Eigen::Dynamic, Eigen::Dynamic>
+svd_U(EigMat&& m) {
+  using MatType
+      = Eigen::Matrix<value_type_t<EigMat>, Eigen::Dynamic, Eigen::Dynamic>;
+  if (unlikely(m.size() == 0)) {
+    return MatType(0, 0);
+  }
+  return Eigen::JacobiSVD<MatType>(to_ref(std::forward<EigMat>(m)),
+                                   Eigen::ComputeThinU)
       .matrixU();
 }
 

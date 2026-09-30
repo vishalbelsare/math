@@ -55,10 +55,15 @@ namespace math {
  * @param a Second argument
  * @return Owen's T function applied to the arguments.
  */
-inline double owens_t(double h, double a) { return boost::math::owens_t(h, a); }
+inline double owens_t(double h, double a) {
+  if (unlikely(std::isnan(h) || std::isnan(a))) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return boost::math::owens_t(h, a);
+}
 
 /**
- * Enables the vectorised application of the owens_t
+ * Enables the vectorized application of the owens_t
  * function, when the first and/or second arguments are containers.
  *
  * @tparam T1 type of first input
@@ -67,10 +72,15 @@ inline double owens_t(double h, double a) { return boost::math::owens_t(h, a); }
  * @param b Second input
  * @return owens_t function applied to the two inputs.
  */
-template <typename T1, typename T2, require_any_container_t<T1, T2>* = nullptr>
-inline auto owens_t(const T1& a, const T2& b) {
+template <typename T1, typename T2, require_any_container_t<T1, T2>* = nullptr,
+          require_all_not_var_and_matrix_types<T1, T2>* = nullptr>
+inline auto owens_t(T1&& a, T2&& b) {
   return apply_scalar_binary(
-      a, b, [&](const auto& c, const auto& d) { return owens_t(c, d); });
+      [](auto&& c, auto&& d) {
+        return owens_t(std::forward<decltype(c)>(c),
+                       std::forward<decltype(d)>(d));
+      },
+      std::forward<T1>(a), std::forward<T2>(b));
 }
 
 }  // namespace math

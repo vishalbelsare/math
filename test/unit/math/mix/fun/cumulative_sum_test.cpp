@@ -1,13 +1,15 @@
 #include <test/unit/math/test_ad.hpp>
 #include <vector>
 
-void expect_cumulative_sum(std::vector<double>& x) {
+inline void expect_cumulative_sum(std::vector<double>& x) {
   auto f = [](const auto& y) { return stan::math::cumulative_sum(y); };
   Eigen::VectorXd v = Eigen::Map<Eigen::VectorXd>(x.data(), x.size());
   Eigen::RowVectorXd rv = Eigen::Map<Eigen::RowVectorXd>(x.data(), x.size());
   stan::test::expect_ad(f, x);
   stan::test::expect_ad(f, v);
+  stan::test::expect_ad_matvar(f, v);
   stan::test::expect_ad(f, rv);
+  stan::test::expect_ad_matvar(f, rv);
 }
 
 TEST(MathMixMatFun, cumulativeSum) {

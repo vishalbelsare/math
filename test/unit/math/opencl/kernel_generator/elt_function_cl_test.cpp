@@ -19,7 +19,7 @@ using stan::math::matrix_cl;
 namespace stan {
 namespace math {
 
-MatrixXd rsqrt(const MatrixXd& a) { return stan::math::inv_sqrt(a); }
+inline MatrixXd rsqrt(const MatrixXd& a) { return stan::math::inv_sqrt(a); }
 
 }  // namespace math
 }  // namespace stan
@@ -93,6 +93,7 @@ TEST_UNARY_FUNCTION(tgamma)
 TEST_UNARY_FUNCTION(lgamma)
 TEST_UNARY_FUNCTION(erf)
 TEST_UNARY_FUNCTION(erfc)
+TEST_UNARY_FUNCTION(erfcx)
 
 TEST_UNARY_FUNCTION(floor)
 TEST_UNARY_FUNCTION(round)

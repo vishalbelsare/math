@@ -12,7 +12,7 @@
 #include <stan/math/prim/fun/size.hpp>
 #include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <cmath>
 
 namespace stan {
@@ -43,7 +43,7 @@ inline return_type_t<T_y, T_loc, T_scale> normal_cdf(const T_y& y,
   using T_y_ref = ref_type_t<T_y>;
   using T_mu_ref = ref_type_t<T_loc>;
   using T_sigma_ref = ref_type_t<T_scale>;
-  static const char* function = "normal_cdf";
+  static constexpr const char* function = "normal_cdf";
   check_consistent_sizes(function, "Random variable", y, "Location parameter",
                          mu, "Scale parameter", sigma);
   T_y_ref y_ref = y;
@@ -58,8 +58,7 @@ inline return_type_t<T_y, T_loc, T_scale> normal_cdf(const T_y& y,
   }
 
   T_partials_return cdf(1.0);
-  operands_and_partials<T_y_ref, T_mu_ref, T_sigma_ref> ops_partials(
-      y_ref, mu_ref, sigma_ref);
+  auto ops_partials = make_partials_propagator(y_ref, mu_ref, sigma_ref);
 
   scalar_seq_view<T_y_ref> y_vec(y_ref);
   scalar_seq_view<T_mu_ref> mu_vec(mu_ref);
@@ -85,37 +84,37 @@ inline return_type_t<T_y, T_loc, T_scale> normal_cdf(const T_y& y,
 
     cdf *= cdf_n;
 
-    if (!is_constant_all<T_y, T_loc, T_scale>::value) {
+    if constexpr (is_any_autodiff_v<T_y, T_loc, T_scale>) {
       const T_partials_return rep_deriv
           = (scaled_diff < -37.5 * INV_SQRT_TWO)
                 ? 0.0
                 : INV_SQRT_TWO_PI * exp(-scaled_diff * scaled_diff)
                       / (cdf_n * sigma_dbl);
-      if (!is_constant_all<T_y>::value) {
-        ops_partials.edge1_.partials_[n] += rep_deriv;
+      if constexpr (is_autodiff_v<T_y>) {
+        partials<0>(ops_partials)[n] += rep_deriv;
       }
-      if (!is_constant_all<T_loc>::value) {
-        ops_partials.edge2_.partials_[n] -= rep_deriv;
+      if constexpr (is_autodiff_v<T_loc>) {
+        partials<1>(ops_partials)[n] -= rep_deriv;
       }
-      if (!is_constant_all<T_scale>::value) {
-        ops_partials.edge3_.partials_[n] -= rep_deriv * scaled_diff * SQRT_TWO;
+      if constexpr (is_autodiff_v<T_scale>) {
+        partials<2>(ops_partials)[n] -= rep_deriv * scaled_diff * SQRT_TWO;
       }
     }
   }
 
-  if (!is_constant_all<T_y>::value) {
+  if constexpr (is_autodiff_v<T_y>) {
     for (size_t n = 0; n < stan::math::size(y); ++n) {
-      ops_partials.edge1_.partials_[n] *= cdf;
+      partials<0>(ops_partials)[n] *= cdf;
     }
   }
-  if (!is_constant_all<T_loc>::value) {
+  if constexpr (is_autodiff_v<T_loc>) {
     for (size_t n = 0; n < stan::math::size(mu); ++n) {
-      ops_partials.edge2_.partials_[n] *= cdf;
+      partials<1>(ops_partials)[n] *= cdf;
     }
   }
-  if (!is_constant_all<T_scale>::value) {
+  if constexpr (is_autodiff_v<T_scale>) {
     for (size_t n = 0; n < stan::math::size(sigma); ++n) {
-      ops_partials.edge3_.partials_[n] *= cdf;
+      partials<2>(ops_partials)[n] *= cdf;
     }
   }
   return ops_partials.build(cdf);

@@ -2,11 +2,12 @@
 #define STAN_MATH_REV_FUN_SVD_V_HPP
 
 #include <stan/math/prim/fun/Eigen.hpp>
-#include <stan/math/prim/err/check_nonzero_size.hpp>
-#include <stan/math/prim/fun/typedefs.hpp>
 #include <stan/math/rev/meta.hpp>
 #include <stan/math/rev/core.hpp>
 #include <stan/math/rev/fun/value_of.hpp>
+#include <stan/math/prim/err/check_nonzero_size.hpp>
+#include <stan/math/prim/fun/typedefs.hpp>
+#include <stan/math/prim/fun/svd_V.hpp>
 
 namespace stan {
 namespace math {
@@ -24,13 +25,15 @@ namespace math {
 template <typename EigMat, require_rev_matrix_t<EigMat>* = nullptr>
 inline auto svd_V(const EigMat& m) {
   using ret_type = return_var_matrix_t<Eigen::MatrixXd, EigMat>;
-  check_nonzero_size("svd_V", "m", m);
+  if (unlikely(m.size() == 0)) {
+    return ret_type(Eigen::MatrixXd(0, 0));
+  }
 
   const int M = std::min(m.rows(), m.cols());
   auto arena_m = to_arena(m);
 
-  Eigen::JacobiSVD<Eigen::MatrixXd> svd(
-      arena_m.val(), Eigen::ComputeThinU | Eigen::ComputeThinV);
+  Eigen::JacobiSVD<promote_scalar_t<double, plain_type_t<EigMat>>> svd(
+      arena_m.val().eval(), Eigen::ComputeThinU | Eigen::ComputeThinV);
 
   auto arena_D = to_arena(svd.singularValues());
 
@@ -50,18 +53,18 @@ inline auto svd_V(const EigMat& m) {
   auto arena_U = to_arena(svd.matrixU());
   arena_t<ret_type> arena_V = svd.matrixV();
 
-  reverse_pass_callback([arena_m, arena_U, arena_D, arena_V, arena_Fm,
-                         M]() mutable {
-    Eigen::MatrixXd VTVadj = arena_V.val_op().transpose() * arena_V.adj_op();
+  reverse_pass_callback([arena_m, arena_U, arena_D, arena_V,
+                         arena_Fm]() mutable {
+    Eigen::MatrixXd VTVadj = arena_V.val().transpose() * arena_V.adj_op();
     arena_m.adj()
         += 0.5 * arena_U
                * (arena_Fm.array() * (VTVadj - VTVadj.transpose()).array())
                      .matrix()
-               * arena_V.val_op().transpose()
+               * arena_V.val().transpose()
            + arena_U * arena_D.asDiagonal().inverse()
                  * arena_V.adj_op().transpose()
                  * (Eigen::MatrixXd::Identity(arena_m.cols(), arena_m.cols())
-                    - arena_V.val_op() * arena_V.val_op().transpose());
+                    - arena_V.val() * arena_V.val().transpose());
   });
 
   return ret_type(arena_V);

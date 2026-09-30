@@ -1,9 +1,9 @@
 #ifndef STAN_MATH_REV_CORE_COUNT_VARS_HPP
 #define STAN_MATH_REV_CORE_COUNT_VARS_HPP
 
-#include <stan/math/prim/meta.hpp>
 #include <stan/math/rev/meta.hpp>
 #include <stan/math/rev/core/var.hpp>
+#include <stan/math/prim/functor/apply.hpp>
 
 #include <utility>
 #include <vector>
@@ -33,8 +33,10 @@ template <typename Arith, require_arithmetic_t<scalar_type_t<Arith>>* = nullptr,
           typename... Pargs>
 inline size_t count_vars_impl(size_t count, Arith& x, Pargs&&... args);
 
-inline size_t count_vars_impl(size_t count);
+template <typename Tuple, require_tuple_t<Tuple>* = nullptr, typename... Pargs>
+inline size_t count_vars_impl(size_t count, Tuple&& x, Pargs&&... args);
 
+inline size_t count_vars_impl(size_t count);
 /**
  * Count the number of vars in x (a std::vector of vars),
  *  add it to the running total,
@@ -114,7 +116,7 @@ inline size_t count_vars_impl(size_t count, const var& x, Pargs&&... args) {
  * Arguments without vars contribute zero to the total number of vars.
  *
  * Return the running total number of vars plus the number of
- *   vars in the remaining aruments.
+ *   vars in the remaining arguments.
  *
  * @tparam Arith An object that is either arithmetic or holds arithmetic
  * types
@@ -130,10 +132,36 @@ inline size_t count_vars_impl(size_t count, Arith& x, Pargs&&... args) {
   return count_vars_impl(count, std::forward<Pargs>(args)...);
 }
 
+inline size_t count_vars_impl(size_t count, std::basic_ostream<char>*&) {
+  return count;
+}
+
+/**
+ * Count the vars in a tuple, add them to the running total, and count the vars
+ * in the remaining arguments.
+ *
+ * @tparam Tuple A tuple type
+ * @tparam Pargs Types of remaining arguments
+ * @param[in] count The current count of the number of vars
+ * @param[in] x A tuple containing arguments to count
+ * @param[in] args Objects to be forwarded to the recursive call
+ * @return The total number of vars
+ */
+template <typename Tuple, require_tuple_t<Tuple>*, typename... Pargs>
+inline size_t count_vars_impl(size_t count, Tuple&& x, Pargs&&... args) {
+  count = stan::math::apply(
+      [count](auto&&... tuple_args) {
+        return count_vars_impl(count, tuple_args...);
+      },
+      std::forward<Tuple>(x));
+  return count_vars_impl(count, std::forward<Pargs>(args)...);
+}
+
 /**
  * End count_vars_impl recursion and return total number of counted vars
  */
 inline size_t count_vars_impl(size_t count) { return count; }
+
 }  // namespace internal
 
 /**

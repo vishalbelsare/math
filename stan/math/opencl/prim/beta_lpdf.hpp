@@ -9,7 +9,7 @@
 #include <stan/math/prim/fun/digamma.hpp>
 #include <stan/math/prim/fun/lgamma.hpp>
 #include <stan/math/prim/fun/max_size.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <stan/math/prim/fun/elt_multiply.hpp>
 #include <stan/math/prim/fun/elt_divide.hpp>
 
@@ -40,11 +40,11 @@ template <bool propto, typename T_y_cl, typename T_scale_succ_cl,
               T_y_cl, T_scale_succ_cl, T_scale_fail_cl>* = nullptr,
           require_any_not_stan_scalar_t<T_y_cl, T_scale_succ_cl,
                                         T_scale_fail_cl>* = nullptr>
-return_type_t<T_y_cl, T_scale_succ_cl, T_scale_fail_cl> beta_lpdf(
+inline return_type_t<T_y_cl, T_scale_succ_cl, T_scale_fail_cl> beta_lpdf(
     const T_y_cl& y, const T_scale_succ_cl& alpha,
     const T_scale_fail_cl& beta) {
   using std::isfinite;
-  static const char* function = "beta_lpdf(OpenCL)";
+  static constexpr const char* function = "beta_lpdf(OpenCL)";
   using T_partials_return
       = partials_return_t<T_y_cl, T_scale_succ_cl, T_scale_fail_cl>;
 
@@ -68,9 +68,7 @@ return_type_t<T_y_cl, T_scale_succ_cl, T_scale_fail_cl> beta_lpdf(
   const auto& alpha_val = value_of(alpha_col);
   const auto& beta_val = value_of(beta_col);
 
-  operands_and_partials<decltype(y_col), decltype(alpha_col),
-                        decltype(beta_col)>
-      ops_partials(y_col, alpha_col, beta_col);
+  auto ops_partials = make_partials_propagator(y_col, alpha_col, beta_col);
 
   auto check_alpha_pos_finite = check_cl(function, "First shape parameter",
                                          alpha_val, "positive finite");
@@ -87,27 +85,27 @@ return_type_t<T_y_cl, T_scale_succ_cl, T_scale_fail_cl> beta_lpdf(
   auto alpha_beta_expr = alpha_val + beta_val;
 
   auto zero_expr
-      = as_operation_cl(0);  // simplifiy the kernel by only using one zero
+      = as_operation_cl(0);  // simplify the kernel by only using one zero
   auto logp_expr = colwise_sum(
       static_select<include_summand<propto, T_scale_succ_cl>::value>(
           -lgamma(alpha_val), zero_expr)
       + static_select<include_summand<propto, T_scale_fail_cl>::value>(
-            -lgamma(beta_val), zero_expr)
+          -lgamma(beta_val), zero_expr)
       + static_select<include_summand<propto, T_y_cl, T_scale_succ_cl>::value>(
-            elt_multiply((alpha_val - 1.0), log_y_expr), zero_expr)
+          elt_multiply((alpha_val - 1.0), log_y_expr), zero_expr)
       + static_select<include_summand<propto, T_y_cl, T_scale_fail_cl>::value>(
-            elt_multiply((beta_val - 1.0), log1m_y_expr), zero_expr)
+          elt_multiply((beta_val - 1.0), log1m_y_expr), zero_expr)
       + static_select<
-            include_summand<propto, T_scale_succ_cl, T_scale_fail_cl>::value>(
-            lgamma(alpha_beta_expr), zero_expr));
+          include_summand<propto, T_scale_succ_cl, T_scale_fail_cl>::value>(
+          lgamma(alpha_beta_expr), zero_expr));
 
-  auto y_deriv_expr = calc_if<!is_constant<T_y_cl>::value>(
+  auto y_deriv_expr = calc_if<is_autodiff_v<T_y_cl>>(
       elt_divide((alpha_val - 1), y_val)
       + elt_divide((beta_val - 1), (y_val - 1)));
   auto digamma_alpha_beta_expr = digamma(alpha_beta_expr);
-  auto alpha_deriv_expr = calc_if<!is_constant<T_scale_succ_cl>::value>(
+  auto alpha_deriv_expr = calc_if<is_autodiff_v<T_scale_succ_cl>>(
       log_y_expr + digamma_alpha_beta_expr - digamma(alpha_val));
-  auto beta_deriv_expr = calc_if<!is_constant<T_scale_fail_cl>::value>(
+  auto beta_deriv_expr = calc_if<is_autodiff_v<T_scale_fail_cl>>(
       log1m_y_expr + digamma_alpha_beta_expr - digamma(beta_val));
 
   matrix_cl<double> logp_cl;
@@ -122,14 +120,14 @@ return_type_t<T_y_cl, T_scale_succ_cl, T_scale_fail_cl> beta_lpdf(
 
   T_partials_return logp = sum(from_matrix_cl(logp_cl));
 
-  if (!is_constant<T_y_cl>::value) {
-    ops_partials.edge1_.partials_ = std::move(y_deriv_cl);
+  if constexpr (is_autodiff_v<T_y_cl>) {
+    partials<0>(ops_partials) = std::move(y_deriv_cl);
   }
-  if (!is_constant<T_scale_succ_cl>::value) {
-    ops_partials.edge2_.partials_ = std::move(alpha_deriv_cl);
+  if constexpr (is_autodiff_v<T_scale_succ_cl>) {
+    partials<1>(ops_partials) = std::move(alpha_deriv_cl);
   }
-  if (!is_constant<T_scale_fail_cl>::value) {
-    ops_partials.edge3_.partials_ = std::move(beta_deriv_cl);
+  if constexpr (is_autodiff_v<T_scale_fail_cl>) {
+    partials<2>(ops_partials) = std::move(beta_deriv_cl);
   }
 
   return ops_partials.build(logp);

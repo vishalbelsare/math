@@ -11,7 +11,7 @@
 #include <stan/math/prim/fun/size.hpp>
 #include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 
 namespace stan {
 namespace math {
@@ -36,13 +36,13 @@ namespace math {
 template <bool propto, typename T_n, typename T_N, typename T_prob,
           require_all_not_nonscalar_prim_or_rev_kernel_expression_t<
               T_n, T_N, T_prob>* = nullptr>
-return_type_t<T_prob> binomial_lpmf(const T_n& n, const T_N& N,
-                                    const T_prob& theta) {
+inline return_type_t<T_prob> binomial_lpmf(const T_n& n, const T_N& N,
+                                           const T_prob& theta) {
   using T_partials_return = partials_return_t<T_n, T_N, T_prob>;
   using T_n_ref = ref_type_t<T_n>;
   using T_N_ref = ref_type_t<T_N>;
   using T_theta_ref = ref_type_t<T_prob>;
-  static const char* function = "binomial_lpmf";
+  static constexpr const char* function = "binomial_lpmf";
   check_consistent_sizes(function, "Successes variable", n,
                          "Population size parameter", N,
                          "Probability parameter", theta);
@@ -59,12 +59,12 @@ return_type_t<T_prob> binomial_lpmf(const T_n& n, const T_N& N,
   if (size_zero(n, N, theta)) {
     return 0.0;
   }
-  if (!include_summand<propto, T_prob>::value) {
+  if constexpr (!include_summand<propto, T_prob>::value) {
     return 0.0;
   }
 
   T_partials_return logp = 0;
-  operands_and_partials<T_theta_ref> ops_partials(theta_ref);
+  auto ops_partials = make_partials_propagator(theta_ref);
 
   scalar_seq_view<T_n_ref> n_vec(n_ref);
   scalar_seq_view<T_N_ref> N_vec(N_ref);
@@ -77,7 +77,7 @@ return_type_t<T_prob> binomial_lpmf(const T_n& n, const T_N& N,
     log1m_theta[i] = log1m(theta_vec.val(i));
   }
 
-  if (include_summand<propto>::value) {
+  if constexpr (include_summand<propto>::value) {
     for (size_t i = 0; i < max_size_seq_view; ++i) {
       logp += binomial_coefficient_log(N_vec[i], n_vec[i]);
     }
@@ -96,7 +96,7 @@ return_type_t<T_prob> binomial_lpmf(const T_n& n, const T_N& N,
     }
   }
 
-  if (!is_constant_all<T_prob>::value) {
+  if constexpr (is_autodiff_v<T_prob>) {
     if (size_theta == 1) {
       T_partials_return sum_n = 0;
       T_partials_return sum_N = 0;
@@ -107,11 +107,11 @@ return_type_t<T_prob> binomial_lpmf(const T_n& n, const T_N& N,
       const T_partials_return theta_dbl = theta_vec.val(0);
       if (sum_N != 0) {
         if (sum_n == 0) {
-          ops_partials.edge1_.partials_[0] -= sum_N / (1.0 - theta_dbl);
+          partials<0>(ops_partials)[0] -= sum_N / (1.0 - theta_dbl);
         } else if (sum_n == sum_N) {
-          ops_partials.edge1_.partials_[0] += sum_n / theta_dbl;
+          partials<0>(ops_partials)[0] += sum_n / theta_dbl;
         } else {
-          ops_partials.edge1_.partials_[0]
+          partials<0>(ops_partials)[0]
               += sum_n / theta_dbl - (sum_N - sum_n) / (1.0 - theta_dbl);
         }
       }
@@ -120,11 +120,11 @@ return_type_t<T_prob> binomial_lpmf(const T_n& n, const T_N& N,
         const T_partials_return theta_dbl = theta_vec.val(i);
         if (N_vec[i] != 0) {
           if (n_vec[i] == 0) {
-            ops_partials.edge1_.partials_[i] -= N_vec[i] / (1.0 - theta_dbl);
+            partials<0>(ops_partials)[i] -= N_vec[i] / (1.0 - theta_dbl);
           } else if (n_vec[i] == N_vec[i]) {
-            ops_partials.edge1_.partials_[i] += n_vec[i] / theta_dbl;
+            partials<0>(ops_partials)[i] += n_vec[i] / theta_dbl;
           } else {
-            ops_partials.edge1_.partials_[i]
+            partials<0>(ops_partials)[i]
                 += n_vec[i] / theta_dbl
                    - (N_vec[i] - n_vec[i]) / (1.0 - theta_dbl);
           }

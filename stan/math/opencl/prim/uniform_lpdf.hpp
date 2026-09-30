@@ -8,7 +8,7 @@
 #include <stan/math/prim/fun/elt_divide.hpp>
 #include <stan/math/prim/fun/elt_multiply.hpp>
 #include <stan/math/opencl/kernel_generator.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 
 namespace stan {
 namespace math {
@@ -41,7 +41,7 @@ template <bool propto, typename T_y_cl, typename T_low_cl, typename T_high_cl,
           require_any_not_stan_scalar_t<T_y_cl, T_low_cl, T_high_cl>* = nullptr>
 inline return_type_t<T_y_cl, T_low_cl, T_high_cl> uniform_lpdf(
     const T_y_cl& y, const T_low_cl& alpha, const T_high_cl& beta) {
-  static const char* function = "uniform_lpdf(OpenCL)";
+  static constexpr const char* function = "uniform_lpdf(OpenCL)";
   using T_partials_return = partials_return_t<T_y_cl, T_low_cl, T_high_cl>;
   using std::isfinite;
   using std::isnan;
@@ -53,7 +53,7 @@ inline return_type_t<T_y_cl, T_low_cl, T_high_cl> uniform_lpdf(
   if (N == 0) {
     return 0.0;
   }
-  if (!include_summand<propto, T_y_cl, T_low_cl, T_high_cl>::value) {
+  if constexpr (!include_summand<propto, T_y_cl, T_low_cl, T_high_cl>::value) {
     return 0.0;
   }
 
@@ -98,11 +98,10 @@ inline return_type_t<T_y_cl, T_low_cl, T_high_cl> uniform_lpdf(
   results(check_y_not_nan, check_alpha_finite, check_beta_finite,
           check_diff_positive, y_out_of_bounds_cl, logp_cl, alpha_deriv_cl,
           beta_deriv_cl)
-      = expressions(
-          y_not_nan, alpha_finite, beta_finite, diff_positive, y_out_of_bounds,
-          logp_expr,
-          calc_if<!is_constant<T_low_cl>::value>(inv_beta_minus_alpha),
-          calc_if<!is_constant<T_high_cl>::value>(-inv_beta_minus_alpha));
+      = expressions(y_not_nan, alpha_finite, beta_finite, diff_positive,
+                    y_out_of_bounds, logp_expr,
+                    calc_if<is_autodiff_v<T_low_cl>>(inv_beta_minus_alpha),
+                    calc_if<is_autodiff_v<T_high_cl>>(-inv_beta_minus_alpha));
 
   if (from_matrix_cl(y_out_of_bounds_cl).any()) {
     return LOG_ZERO;
@@ -110,15 +109,13 @@ inline return_type_t<T_y_cl, T_low_cl, T_high_cl> uniform_lpdf(
 
   T_partials_return logp = sum(from_matrix_cl(logp_cl));
 
-  operands_and_partials<decltype(y_col), decltype(alpha_col),
-                        decltype(beta_col)>
-      ops_partials(y_col, alpha_col, beta_col);
+  auto ops_partials = make_partials_propagator(y_col, alpha_col, beta_col);
 
-  if (!is_constant<T_low_cl>::value) {
-    ops_partials.edge2_.partials_ = std::move(alpha_deriv_cl);
+  if constexpr (is_autodiff_v<T_low_cl>) {
+    partials<1>(ops_partials) = std::move(alpha_deriv_cl);
   }
-  if (!is_constant<T_high_cl>::value) {
-    ops_partials.edge3_.partials_ = std::move(beta_deriv_cl);
+  if constexpr (is_autodiff_v<T_high_cl>) {
+    partials<2>(ops_partials) = std::move(beta_deriv_cl);
   }
   return ops_partials.build(logp);
 }

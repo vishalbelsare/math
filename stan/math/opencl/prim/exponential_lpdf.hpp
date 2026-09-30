@@ -9,7 +9,7 @@
 #include <stan/math/prim/fun/digamma.hpp>
 #include <stan/math/prim/fun/lgamma.hpp>
 #include <stan/math/prim/fun/max_size.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 
 namespace stan {
 namespace math {
@@ -44,10 +44,10 @@ template <bool propto, typename T_y_cl, typename T_inv_scale_cl,
           require_all_prim_or_rev_kernel_expression_t<
               T_y_cl, T_inv_scale_cl>* = nullptr,
           require_any_not_stan_scalar_t<T_y_cl, T_inv_scale_cl>* = nullptr>
-return_type_t<T_y_cl, T_inv_scale_cl> exponential_lpdf(
+inline return_type_t<T_y_cl, T_inv_scale_cl> exponential_lpdf(
     const T_y_cl& y, const T_inv_scale_cl& beta) {
   using std::isfinite;
-  static const char* function = "exponential_lpdf(OpenCL)";
+  static constexpr const char* function = "exponential_lpdf(OpenCL)";
   using T_partials_return = partials_return_t<T_y_cl, T_inv_scale_cl>;
 
   check_consistent_sizes(function, "Random variable", y,
@@ -56,7 +56,7 @@ return_type_t<T_y_cl, T_inv_scale_cl> exponential_lpdf(
   if (N == 0) {
     return 0.0;
   }
-  if (!include_summand<propto, T_y_cl, T_inv_scale_cl>::value) {
+  if constexpr (!include_summand<propto, T_y_cl, T_inv_scale_cl>::value) {
     return 0.0;
   }
 
@@ -66,8 +66,7 @@ return_type_t<T_y_cl, T_inv_scale_cl> exponential_lpdf(
   const auto& y_val = value_of(y_col);
   const auto& beta_val = value_of(beta_col);
 
-  operands_and_partials<decltype(y_col), decltype(beta_col)> ops_partials(
-      y_col, beta_col);
+  auto ops_partials = make_partials_propagator(y_col, beta_col);
 
   auto check_y_nonnegative
       = check_cl(function, "Random variable", y_val, "nonnegative");
@@ -92,18 +91,17 @@ return_type_t<T_y_cl, T_inv_scale_cl> exponential_lpdf(
 
   results(check_y_nonnegative, check_beta_pos_finite, logp_cl, y_deriv_cl,
           beta_deriv_cl)
-      = expressions(
-          y_nonnegative_expr, beta_pos_finite_expr, logp_expr,
-          calc_if<!is_constant<T_y_cl>::value>(y_deriv_expr),
-          calc_if<!is_constant<T_inv_scale_cl>::value>(beta_deriv_expr));
+      = expressions(y_nonnegative_expr, beta_pos_finite_expr, logp_expr,
+                    calc_if<is_autodiff_v<T_y_cl>>(y_deriv_expr),
+                    calc_if<is_autodiff_v<T_inv_scale_cl>>(beta_deriv_expr));
 
   T_partials_return logp = sum(from_matrix_cl(logp_cl));
 
-  if (!is_constant<T_y_cl>::value) {
-    ops_partials.edge1_.partials_ = std::move(y_deriv_cl);
+  if constexpr (is_autodiff_v<T_y_cl>) {
+    partials<0>(ops_partials) = std::move(y_deriv_cl);
   }
-  if (!is_constant<T_inv_scale_cl>::value) {
-    ops_partials.edge2_.partials_ = std::move(beta_deriv_cl);
+  if constexpr (is_autodiff_v<T_inv_scale_cl>) {
+    partials<1>(ops_partials) = std::move(beta_deriv_cl);
   }
 
   return ops_partials.build(logp);

@@ -1,12 +1,13 @@
 #ifndef STAN_MATH_REV_FUN_QUAD_FORM_SYM_HPP
 #define STAN_MATH_REV_FUN_QUAD_FORM_SYM_HPP
 
+#include <stan/math/prim/fun/Eigen.hpp>
 #include <stan/math/rev/meta.hpp>
 #include <stan/math/rev/core.hpp>
-#include <stan/math/prim/err.hpp>
-#include <stan/math/prim/fun/Eigen.hpp>
-#include <stan/math/prim/fun/to_ref.hpp>
 #include <stan/math/rev/fun/quad_form.hpp>
+#include <stan/math/prim/err.hpp>
+#include <stan/math/prim/fun/to_ref.hpp>
+#include <stan/math/prim/fun/quad_form_sym.hpp>
 #include <type_traits>
 
 namespace stan {
@@ -30,11 +31,12 @@ namespace math {
 template <typename EigMat1, typename EigMat2,
           require_all_eigen_t<EigMat1, EigMat2>* = nullptr,
           require_any_vt_var<EigMat1, EigMat2>* = nullptr>
-inline auto quad_form_sym(const EigMat1& A, const EigMat2& B) {
+inline auto quad_form_sym(EigMat1&& A, EigMat2&& B) {
   check_multiplicable("quad_form_sym", "A", A, "B", B);
-  const auto& A_ref = to_ref(A);
+  decltype(auto) A_ref = to_ref(std::forward<EigMat1>(A));
   check_symmetric("quad_form_sym", "A", A_ref);
-  return quad_form(A_ref, B, true);
+  return quad_form(std::forward<decltype(A_ref)>(A_ref),
+                   std::forward<EigMat2>(B), true);
 }
 
 }  // namespace math

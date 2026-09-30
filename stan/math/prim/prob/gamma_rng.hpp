@@ -5,6 +5,7 @@
 #include <stan/math/prim/err.hpp>
 #include <stan/math/prim/fun/scalar_seq_view.hpp>
 #include <stan/math/prim/fun/max_size.hpp>
+#include <stan/math/prim/fun/size_zero.hpp>
 #include <boost/random/gamma_distribution.hpp>
 #include <boost/random/variate_generator.hpp>
 
@@ -36,9 +37,13 @@ inline typename VectorBuilder<true, double, T_shape, T_inv>::type gamma_rng(
   using boost::variate_generator;
   using T_alpha_ref = ref_type_t<T_shape>;
   using T_beta_ref = ref_type_t<T_inv>;
-  static const char* function = "gamma_rng";
+  static constexpr const char* function = "gamma_rng";
   check_consistent_sizes(function, "Shape parameter", alpha,
                          "Inverse scale Parameter", beta);
+  if (size_zero(alpha, beta)) {
+    return {};
+  }
+
   T_alpha_ref alpha_ref = alpha;
   T_beta_ref beta_ref = beta;
   check_positive_finite(function, "Shape parameter", alpha_ref);

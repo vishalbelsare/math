@@ -23,7 +23,7 @@ inline double fmax(T1 x, T2 y) {
 }
 
 /**
- * Enables the vectorised application of the fmax function,
+ * Enables the vectorized application of the fmax function,
  * when the first and/or second arguments are containers.
  *
  * @tparam T1 type of first input
@@ -33,9 +33,12 @@ inline double fmax(T1 x, T2 y) {
  * @return fmax function applied to the two inputs.
  */
 template <typename T1, typename T2, require_any_container_t<T1, T2>* = nullptr>
-inline auto fmax(const T1& a, const T2& b) {
+inline auto fmax(T1&& a, T2&& b) {
   return apply_scalar_binary(
-      a, b, [&](const auto& c, const auto& d) { return fmax(c, d); });
+      [](auto&& c, auto&& d) {
+        return fmax(std::forward<decltype(c)>(c), std::forward<decltype(d)>(d));
+      },
+      std::forward<T1>(a), std::forward<T2>(b));
 }
 
 }  // namespace math

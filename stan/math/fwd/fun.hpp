@@ -27,12 +27,14 @@
 #include <stan/math/fwd/fun/digamma.hpp>
 #include <stan/math/fwd/fun/erf.hpp>
 #include <stan/math/fwd/fun/erfc.hpp>
+#include <stan/math/fwd/fun/erfcx.hpp>
 #include <stan/math/fwd/fun/exp.hpp>
 #include <stan/math/fwd/fun/exp2.hpp>
 #include <stan/math/fwd/fun/expm1.hpp>
 #include <stan/math/fwd/fun/fabs.hpp>
 #include <stan/math/fwd/fun/falling_factorial.hpp>
 #include <stan/math/fwd/fun/fdim.hpp>
+#include <stan/math/fwd/fun/fft.hpp>
 #include <stan/math/fwd/fun/floor.hpp>
 #include <stan/math/fwd/fun/fma.hpp>
 #include <stan/math/fwd/fun/fmax.hpp>
@@ -40,12 +42,16 @@
 #include <stan/math/fwd/fun/fmod.hpp>
 #include <stan/math/fwd/fun/gamma_p.hpp>
 #include <stan/math/fwd/fun/gamma_q.hpp>
-#include <stan/math/fwd/fun/grad_inc_beta.hpp>
+#include <stan/math/fwd/fun/hypergeometric_1F0.hpp>
+#include <stan/math/fwd/fun/hypergeometric_2F1.hpp>
+#include <stan/math/fwd/fun/hypergeometric_pFq.hpp>
 #include <stan/math/fwd/fun/hypot.hpp>
 #include <stan/math/fwd/fun/inc_beta.hpp>
 #include <stan/math/fwd/fun/inv.hpp>
+#include <stan/math/fwd/fun/inv_erfc.hpp>
 #include <stan/math/fwd/fun/inv_Phi.hpp>
 #include <stan/math/fwd/fun/inv_cloglog.hpp>
+#include <stan/math/fwd/fun/inv_inc_beta.hpp>
 #include <stan/math/fwd/fun/inv_logit.hpp>
 #include <stan/math/fwd/fun/inv_sqrt.hpp>
 #include <stan/math/fwd/fun/inv_square.hpp>
@@ -87,6 +93,8 @@
 #include <stan/math/fwd/fun/multiply_log.hpp>
 #include <stan/math/fwd/fun/multiply_lower_tri_self_transpose.hpp>
 #include <stan/math/fwd/fun/norm.hpp>
+#include <stan/math/fwd/fun/norm1.hpp>
+#include <stan/math/fwd/fun/norm2.hpp>
 #include <stan/math/fwd/fun/owens_t.hpp>
 #include <stan/math/fwd/fun/Phi.hpp>
 #include <stan/math/fwd/fun/Phi_approx.hpp>
@@ -110,11 +118,12 @@
 #include <stan/math/fwd/fun/tcrossprod.hpp>
 #include <stan/math/fwd/fun/tgamma.hpp>
 #include <stan/math/fwd/fun/to_fvar.hpp>
+#include <stan/math/fwd/fun/trace_dot.hpp>
 #include <stan/math/fwd/fun/trace_quad_form.hpp>
 #include <stan/math/fwd/fun/trigamma.hpp>
 #include <stan/math/fwd/fun/trunc.hpp>
 #include <stan/math/fwd/fun/typedefs.hpp>
-#include <stan/math/fwd/fun/unit_vector_constrain.hpp>
+#include <stan/math/fwd/constraint/unit_vector_constrain.hpp>
 #include <stan/math/fwd/fun/value_of.hpp>
 #include <stan/math/fwd/fun/value_of_rec.hpp>
 

@@ -8,7 +8,7 @@
 #include <stan/math/prim/fun/elt_divide.hpp>
 #include <stan/math/prim/fun/elt_multiply.hpp>
 #include <stan/math/opencl/kernel_generator.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 
 namespace stan {
 namespace math {
@@ -34,7 +34,7 @@ template <
     require_any_not_stan_scalar_t<T_y_cl, T_shape_cl, T_scale_cl>* = nullptr>
 inline return_type_t<T_y_cl, T_shape_cl, T_scale_cl> weibull_lpdf(
     const T_y_cl& y, const T_shape_cl& alpha, const T_scale_cl& sigma) {
-  static const char* function = "weibull_lpdf(OpenCL)";
+  static constexpr const char* function = "weibull_lpdf(OpenCL)";
   using T_partials_return = partials_return_t<T_y_cl, T_shape_cl, T_scale_cl>;
   using std::isfinite;
   using std::isnan;
@@ -45,7 +45,8 @@ inline return_type_t<T_y_cl, T_shape_cl, T_scale_cl> weibull_lpdf(
   if (N == 0) {
     return 0.0;
   }
-  if (!include_summand<propto, T_y_cl, T_shape_cl, T_scale_cl>::value) {
+  if constexpr (!include_summand<propto, T_y_cl, T_shape_cl,
+                                 T_scale_cl>::value) {
     return 0.0;
   }
 
@@ -102,9 +103,9 @@ inline return_type_t<T_y_cl, T_shape_cl, T_scale_cl> weibull_lpdf(
           alpha_deriv_cl, sigma_deriv_cl)
       = expressions(y_finite, alpha_positive_finite, sigma_positive_finite,
                     any_y_negative, logp_expr,
-                    calc_if<!is_constant<T_y_cl>::value>(y_deriv),
-                    calc_if<!is_constant<T_shape_cl>::value>(alpha_deriv),
-                    calc_if<!is_constant<T_scale_cl>::value>(sigma_deriv));
+                    calc_if<is_autodiff_v<T_y_cl>>(y_deriv),
+                    calc_if<is_autodiff_v<T_shape_cl>>(alpha_deriv),
+                    calc_if<is_autodiff_v<T_scale_cl>>(sigma_deriv));
 
   if (from_matrix_cl(any_y_negative_cl).any()) {
     return LOG_ZERO;
@@ -112,18 +113,16 @@ inline return_type_t<T_y_cl, T_shape_cl, T_scale_cl> weibull_lpdf(
 
   T_partials_return logp = sum(from_matrix_cl(logp_cl));
 
-  operands_and_partials<decltype(y_col), decltype(alpha_col),
-                        decltype(sigma_col)>
-      ops_partials(y_col, alpha_col, sigma_col);
+  auto ops_partials = make_partials_propagator(y_col, alpha_col, sigma_col);
 
-  if (!is_constant<T_y_cl>::value) {
-    ops_partials.edge1_.partials_ = std::move(y_deriv_cl);
+  if constexpr (is_autodiff_v<T_y_cl>) {
+    partials<0>(ops_partials) = std::move(y_deriv_cl);
   }
-  if (!is_constant<T_shape_cl>::value) {
-    ops_partials.edge2_.partials_ = std::move(alpha_deriv_cl);
+  if constexpr (is_autodiff_v<T_shape_cl>) {
+    partials<1>(ops_partials) = std::move(alpha_deriv_cl);
   }
-  if (!is_constant<T_scale_cl>::value) {
-    ops_partials.edge3_.partials_ = std::move(sigma_deriv_cl);
+  if constexpr (is_autodiff_v<T_scale_cl>) {
+    partials<2>(ops_partials) = std::move(sigma_deriv_cl);
   }
   return ops_partials.build(logp);
 }

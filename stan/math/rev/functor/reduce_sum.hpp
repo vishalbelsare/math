@@ -2,7 +2,7 @@
 #define STAN_MATH_REV_FUNCTOR_REDUCE_SUM_HPP
 
 #include <stan/math/prim/meta.hpp>
-#include <stan/math/prim/functor.hpp>
+#include <stan/math/prim/functor/reduce_sum.hpp>
 #include <stan/math/rev/core.hpp>
 
 #include <tbb/task_arena.h>
@@ -66,7 +66,6 @@ struct reduce_sum_impl<ReduceFunction, require_var_t<ReturnType>, ReturnType,
           num_vars_shared_terms_(num_vars_shared_terms),
           sliced_partials_(sliced_partials),
           vmapped_(std::forward<VecT>(vmapped)),
-          local_args_tuple_scope_(),
           args_tuple_(std::forward<ArgsT>(args)...) {}
 
     /*
@@ -80,7 +79,6 @@ struct reduce_sum_impl<ReduceFunction, require_var_t<ReturnType>, ReturnType,
           num_vars_shared_terms_(other.num_vars_shared_terms_),
           sliced_partials_(other.sliced_partials_),
           vmapped_(other.vmapped_),
-          local_args_tuple_scope_(),
           args_tuple_(other.args_tuple_) {}
 
     /**
@@ -114,7 +112,7 @@ struct reduce_sum_impl<ReduceFunction, require_var_t<ReturnType>, ReturnType,
         // scope. In this case no need for zeroing adjoints, since the
         // fresh copy has all adjoints set to zero.
         local_args_tuple_scope_.stack_.execute([&]() {
-          apply(
+          math::apply(
               [&](auto&&... args) {
                 local_args_tuple_scope_.args_tuple_holder_ = std::make_unique<
                     typename scoped_args_tuple::args_tuple_t>(
@@ -141,7 +139,7 @@ struct reduce_sum_impl<ReduceFunction, require_var_t<ReturnType>, ReturnType,
       }
 
       // Perform calculation
-      var sub_sum_v = apply(
+      var sub_sum_v = math::apply(
           [&](auto&&... args) {
             return ReduceFunction()(local_sub_slice, r.begin(), r.end() - 1,
                                     &msgs_, args...);
@@ -159,7 +157,7 @@ struct reduce_sum_impl<ReduceFunction, require_var_t<ReturnType>, ReturnType,
                           std::move(local_sub_slice));
 
       // Accumulate adjoints of shared_arguments
-      apply(
+      math::apply(
           [&](auto&&... args) {
             accumulate_adjoints(args_adjoints_.data(), args...);
           },
@@ -252,7 +250,7 @@ struct reduce_sum_impl<ReduceFunction, require_var_t<ReturnType>, ReturnType,
 
     // we must use task isolation as described here:
     // https://software.intel.com/content/www/us/en/develop/documentation/tbb-documentation/top/intel-threading-building-blocks-developer-guide/task-isolation.html
-    // this is to ensure that the thread local AD tape ressource is
+    // this is to ensure that the thread local AD tape resource is
     // not being modified from a different task which may happen
     // whenever this function is being used itself in a parallel
     // context (like running multiple chains for Stan)

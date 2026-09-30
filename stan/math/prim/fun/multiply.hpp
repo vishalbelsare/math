@@ -5,6 +5,7 @@
 #include <stan/math/prim/err.hpp>
 #include <stan/math/prim/fun/Eigen.hpp>
 #include <stan/math/prim/fun/dot_product.hpp>
+#include <stan/math/prim/fun/to_ref.hpp>
 #include <type_traits>
 
 namespace stan {
@@ -22,9 +23,57 @@ namespace math {
  */
 template <typename Mat, typename Scal, require_stan_scalar_t<Scal>* = nullptr,
           require_eigen_t<Mat>* = nullptr,
-          require_all_not_st_var<Scal, Mat>* = nullptr>
-inline auto multiply(const Mat& m, Scal c) {
-  return c * m;
+          require_all_not_st_var<Scal, Mat>* = nullptr,
+          require_all_not_complex_t<Scal, value_type_t<Mat>>* = nullptr>
+inline auto multiply(Mat&& m, Scal c) {
+  auto&& m_ref = to_ref(std::forward<Mat>(m));
+  return make_holder(
+      [c](auto&& m_) { return c * std::forward<decltype(m_)>(m_); },
+      std::forward<decltype(m_ref)>(m_ref));
+}
+
+/**
+ * Return the product of the specified matrix and scalar, one of which must have
+ * a complex value type. The return type will be an expression template denoting
+ * a complex matrix.
+ *
+ * @tparam Mat type of matrix argument
+ * @tparam Scal type of scalar argument
+ * @param m matrix argument
+ * @param c scalar argument
+ * @return expression template evaluating to the product of the matrix and
+ * scalar arguments
+ */
+template <typename Mat, typename Scal,
+          require_any_complex_t<value_type_t<Mat>, Scal>* = nullptr,
+          require_eigen_t<Mat>* = nullptr, require_not_eigen_t<Scal>* = nullptr>
+inline auto multiply(Mat&& m, Scal c) {
+  auto&& m_ref = to_ref(std::forward<Mat>(m));
+  return make_holder(
+      [c](auto&& m_) { return c * std::forward<decltype(m_)>(m_); },
+      std::forward<decltype(m_ref)>(m_ref));
+}
+
+/**
+ * Return the product of the specified matrix and scalar, one of which must have
+ * a complex value type. The return type will be an expression template denoting
+ * a complex matrix.
+ *
+ * @tparam Scal type of scalar argument
+ * @tparam Mat type of matrix argument
+ * @param c scalar argument
+ * @param m matrix argument
+ * @return expression template evaluating to the product of the matrix and
+ * scalar arguments
+ */
+template <typename Mat, typename Scal,
+          require_any_complex_t<value_type_t<Mat>, Scal>* = nullptr,
+          require_eigen_t<Mat>* = nullptr, require_not_eigen_t<Scal>* = nullptr>
+inline auto multiply(const Scal& m, Mat&& c) {
+  auto&& c_ref = to_ref(std::forward<Mat>(c));
+  return make_holder(
+      [m](auto&& c_) { return m * std::forward<decltype(c_)>(c_); },
+      std::forward<decltype(c_ref)>(c_ref));
 }
 
 /**
@@ -39,9 +88,13 @@ inline auto multiply(const Mat& m, Scal c) {
  */
 template <typename Scal, typename Mat, require_stan_scalar_t<Scal>* = nullptr,
           require_eigen_t<Mat>* = nullptr,
-          require_all_not_st_var<Scal, Mat>* = nullptr>
-inline auto multiply(Scal c, const Mat& m) {
-  return c * m;
+          require_all_not_st_var<Scal, Mat>* = nullptr,
+          require_all_not_complex_t<Scal, value_type_t<Mat>>* = nullptr>
+inline auto multiply(Scal c, Mat&& m) {
+  auto&& m_ref = to_ref(std::forward<Mat>(m));
+  return make_holder(
+      [c](auto&& m_) { return c * std::forward<decltype(m_)>(m_); },
+      std::forward<decltype(m_ref)>(m_ref));
 }
 
 /**
@@ -61,10 +114,18 @@ inline auto multiply(Scal c, const Mat& m) {
 template <typename Mat1, typename Mat2,
           require_all_eigen_vt<std::is_arithmetic, Mat1, Mat2>* = nullptr,
           require_not_eigen_row_and_col_t<Mat1, Mat2>* = nullptr>
-inline auto multiply(const Mat1& m1, const Mat2& m2) {
-  check_size_match("multiply", "Columns of m1", m1.cols(), "Rows of m2",
-                   m2.rows());
-  return m1 * m2;
+inline auto multiply(Mat1&& m1, Mat2&& m2) {
+  auto&& m1_ref = to_ref(std::forward<Mat1>(m1));
+  auto&& m2_ref = to_ref(std::forward<Mat2>(m2));
+  check_size_match("multiply", "Columns of m1", m1_ref.cols(), "Rows of m2",
+                   m2_ref.rows());
+  return make_holder(
+      [](auto&& m1_, auto&& m2_) {
+        return std::forward<decltype(m1_)>(m1_)
+               * std::forward<decltype(m2_)>(m2_);
+      },
+      std::forward<decltype(m1_ref)>(m1_ref),
+      std::forward<decltype(m2_ref)>(m2_ref));
 }
 
 /**
@@ -85,10 +146,18 @@ template <typename Mat1, typename Mat2,
           require_all_eigen_t<Mat1, Mat2>* = nullptr,
           require_t<is_complex<return_type_t<Mat1, Mat2>>>* = nullptr,
           require_not_eigen_row_and_col_t<Mat1, Mat2>* = nullptr>
-inline auto multiply(const Mat1& m1, const Mat2& m2) {
-  check_size_match("multiply", "Columns of m1", m1.cols(), "Rows of m2",
-                   m2.rows());
-  return m1.lazyProduct(m2).eval();
+inline auto multiply(Mat1&& m1, Mat2&& m2) {
+  auto&& m1_ref = to_ref(std::forward<Mat1>(m1));
+  auto&& m2_ref = to_ref(std::forward<Mat2>(m2));
+  check_size_match("multiply", "Columns of m1", m1_ref.cols(), "Rows of m2",
+                   m2_ref.rows());
+  return make_holder(
+      [](auto&& m1_, auto&& m2_) {
+        return std::forward<decltype(m1_)>(m1_).lazyProduct(
+            std::forward<decltype(m2_)>(m2_));
+      },
+      std::forward<decltype(m1_ref)>(m1_ref),
+      std::forward<decltype(m2_ref)>(m2_ref));
 }
 
 /**
@@ -107,9 +176,9 @@ inline auto multiply(const Mat1& m1, const Mat2& m2) {
 template <typename RowVec, typename ColVec,
           require_not_var_t<return_type_t<RowVec, ColVec>>* = nullptr,
           require_eigen_row_and_col_t<RowVec, ColVec>* = nullptr>
-inline auto multiply(const RowVec& rv, const ColVec& v) {
+inline auto multiply(RowVec&& rv, ColVec&& v) {
   check_multiplicable("multiply", "rv", rv, "v", v);
-  return dot_product(rv, v);
+  return dot_product(std::forward<RowVec>(rv), std::forward<ColVec>(v));
 }
 
 /**

@@ -9,7 +9,7 @@
 #include <stan/math/prim/fun/to_ref.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
 #include <stan/math/prim/fun/vector_seq_view.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 
 namespace stan {
 namespace math {
@@ -56,13 +56,13 @@ namespace math {
 template <bool propto, typename T_prob, typename T_prior_size,
           require_all_not_nonscalar_prim_or_rev_kernel_expression_t<
               T_prob, T_prior_size>* = nullptr>
-return_type_t<T_prob, T_prior_size> dirichlet_lpdf(const T_prob& theta,
-                                                   const T_prior_size& alpha) {
+inline return_type_t<T_prob, T_prior_size> dirichlet_lpdf(
+    const T_prob& theta, const T_prior_size& alpha) {
   using T_partials_return = partials_return_t<T_prob, T_prior_size>;
   using T_partials_array = typename Eigen::Array<T_partials_return, -1, -1>;
   using T_theta_ref = ref_type_t<T_prob>;
   using T_alpha_ref = ref_type_t<T_prior_size>;
-  static const char* function = "dirichlet_lpdf";
+  static constexpr const char* function = "dirichlet_lpdf";
 
   T_theta_ref theta_ref = theta;
   T_alpha_ref alpha_ref = alpha;
@@ -91,33 +91,31 @@ return_type_t<T_prob, T_prior_size> dirichlet_lpdf(const T_prob& theta,
 
   T_partials_return lp(0.0);
 
-  if (include_summand<propto, T_prior_size>::value) {
+  if constexpr (include_summand<propto, T_prior_size>::value) {
     lp += (lgamma(alpha_dbl.colwise().sum())
            - lgamma(alpha_dbl).colwise().sum())
               .sum();
   }
 
-  const auto& alpha_m_1
-      = to_ref_if<!is_constant_all<T_prob>::value>(alpha_dbl - 1.0);
+  const auto& alpha_m_1 = to_ref_if<is_autodiff_v<T_prob>>(alpha_dbl - 1.0);
   const auto& theta_log
-      = to_ref_if<!is_constant_all<T_prior_size>::value>(theta_dbl.log());
+      = to_ref_if<is_autodiff_v<T_prior_size>>(theta_dbl.log());
 
-  if (include_summand<propto, T_prob, T_prior_size>::value) {
+  if constexpr (include_summand<propto, T_prob, T_prior_size>::value) {
     lp += (theta_log * alpha_m_1).sum();
   }
 
-  operands_and_partials<T_theta_ref, T_alpha_ref> ops_partials(theta_ref,
-                                                               alpha_ref);
-  if (!is_constant_all<T_prob>::value) {
+  auto ops_partials = make_partials_propagator(theta_ref, alpha_ref);
+  if constexpr (is_autodiff_v<T_prob>) {
     for (size_t t = 0; t < t_length; t++) {
-      ops_partials.edge1_.partials_vec_[t]
+      partials_vec<0>(ops_partials)[t]
           += (alpha_m_1.col(t) / theta_dbl.col(t)).matrix();
     }
   }
 
-  if (!is_constant_all<T_prior_size>::value) {
+  if constexpr (is_autodiff_v<T_prior_size>) {
     for (size_t t = 0; t < t_length; t++) {
-      ops_partials.edge2_.partials_vec_[t]
+      partials_vec<1>(ops_partials)[t]
           += (digamma(alpha_dbl.col(t).sum()) - digamma(alpha_dbl.col(t))
               + theta_log.col(t))
                  .matrix();
@@ -127,8 +125,8 @@ return_type_t<T_prob, T_prior_size> dirichlet_lpdf(const T_prob& theta,
 }
 
 template <typename T_prob, typename T_prior_size>
-return_type_t<T_prob, T_prior_size> dirichlet_lpdf(const T_prob& theta,
-                                                   const T_prior_size& alpha) {
+inline return_type_t<T_prob, T_prior_size> dirichlet_lpdf(
+    const T_prob& theta, const T_prior_size& alpha) {
   return dirichlet_lpdf<false>(theta, alpha);
 }
 

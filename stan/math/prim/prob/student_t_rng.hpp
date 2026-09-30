@@ -4,6 +4,7 @@
 #include <stan/math/prim/meta.hpp>
 #include <stan/math/prim/err.hpp>
 #include <stan/math/prim/fun/max_size.hpp>
+#include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/scalar_seq_view.hpp>
 #include <boost/random/student_t_distribution.hpp>
 #include <boost/random/variate_generator.hpp>
@@ -42,9 +43,12 @@ student_t_rng(const T_deg& nu, const T_loc& mu, const T_scale& sigma,
   using T_sigma_ref = ref_type_t<T_scale>;
   using boost::variate_generator;
   using boost::random::student_t_distribution;
-  static const char* function = "student_t_rng";
+  static constexpr const char* function = "student_t_rng";
   check_consistent_sizes(function, "Degrees of freedom parameter", nu,
                          "Location parameter", mu, "Scale Parameter", sigma);
+  if (size_zero(nu, mu, sigma)) {
+    return {};
+  }
   T_nu_ref nu_ref = nu;
   T_mu_ref mu_ref = mu;
   T_sigma_ref sigma_ref = sigma;

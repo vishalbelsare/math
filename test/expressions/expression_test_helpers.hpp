@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include <stan/math/prim.hpp>
+#include <stan/math/prim/meta.hpp>
+#include <stan/math/prim/functor/for_each.hpp>
 #include <stan/math/rev.hpp>
 #include <stan/math/fwd.hpp>
 #include <vector>
@@ -18,18 +20,25 @@ struct counterOp {
   }
 };
 
-template <typename T>
+template <typename T, stan::math::require_not_tuple_t<T>* = nullptr>
 auto recursive_sum(const T& a) {
   return math::sum(a);
 }
 
 template <typename T>
 auto recursive_sum(const std::vector<T>& a) {
-  scalar_type_t<T> res = recursive_sum(a[0]);
+  auto res = recursive_sum(a[0]);
   for (int i = 0; i < a.size(); i++) {
     res += recursive_sum(a[i]);
   }
   return res;
+}
+
+template <typename T, stan::math::require_tuple_t<T>* = nullptr>
+auto recursive_sum(const T& t1) {
+  stan::value_type_t<decltype(std::get<0>(t1))> val = 0;
+  stan::math::for_each([&val](auto&& elt1) { val += recursive_sum(elt1); }, t1);
+  return val;
 }
 
 template <typename T, require_integral_t<T>* = nullptr>
@@ -40,6 +49,12 @@ template <typename T, require_floating_point_t<T>* = nullptr>
 T make_arg(double value = 0.4, int size = 1) {
   return value;
 }
+
+template <typename T, require_complex_t<T>* = nullptr>
+T make_arg(std::complex<double> value = 0.4, int size = 1) {
+  return value;
+}
+
 template <typename T, require_var_t<T>* = nullptr>
 T make_arg(T value = 0.4, int size = 1) {
   return value;
@@ -64,6 +79,7 @@ T make_arg(T_scalar value = 0.4, int size = 1) {
   T res = T::Constant(size, make_arg<value_type_t<T>>(value));
   return res;
 }
+
 template <typename T, typename T_scalar = double,
           require_std_vector_t<T>* = nullptr>
 T make_arg(T_scalar value = 0.4, int size = 1) {
@@ -97,23 +113,42 @@ T make_pos_definite_matrix(double value = 0.4, int size = 1) {
 }
 
 template <typename T, require_arithmetic_t<T>* = nullptr>
-void expect_eq(T a, T b, const char* msg) {
+inline void expect_eq(T a, T b, const char* msg) {
   EXPECT_EQ(a, b) << msg;
 }
 
-void expect_eq(math::var a, math::var b, const char* msg) {
+inline void expect_eq(math::var a, math::var b, const char* msg) {
   EXPECT_EQ(a.val(), b.val()) << msg;
 }
 
 template <typename T, require_arithmetic_t<T>* = nullptr>
-void expect_eq(math::fvar<T> a, math::fvar<T> b, const char* msg) {
+inline void expect_eq(math::fvar<T> a, math::fvar<T> b, const char* msg) {
   expect_eq(a.val(), b.val(), msg);
-  expect_eq(a.tangent(), b.tangent(), msg);
+  expect_eq(a.d(), b.d(), msg);
+}
+
+template <typename T, require_arithmetic_t<T>* = nullptr>
+inline void expect_eq(std::complex<T> a, std::complex<T> b, const char* msg) {
+  expect_eq(a.real(), b.real(), msg);
+  expect_eq(a.imag(), b.imag(), msg);
+}
+
+inline void expect_eq(std::complex<math::var> a, std::complex<math::var> b,
+                      const char* msg) {
+  expect_eq(a.real(), b.real(), msg);
+  expect_eq(a.imag(), b.imag(), msg);
+}
+
+template <typename T, require_arithmetic_t<T>* = nullptr>
+inline void expect_eq(std::complex<math::fvar<T>> a,
+                      std::complex<math::fvar<T>> b, const char* msg) {
+  expect_eq(a.real(), b.real(), msg);
+  expect_eq(a.imag(), b.imag(), msg);
 }
 
 template <typename T1, typename T2, require_all_eigen_t<T1, T2>* = nullptr,
           require_vt_same<T1, T2>* = nullptr>
-void expect_eq(const T1& a, const T2& b, const char* msg) {
+inline void expect_eq(const T1& a, const T2& b, const char* msg) {
   EXPECT_EQ(a.rows(), b.rows()) << msg;
   EXPECT_EQ(a.cols(), b.cols()) << msg;
   const auto& a_ref = math::to_ref(a);
@@ -126,24 +161,33 @@ void expect_eq(const T1& a, const T2& b, const char* msg) {
 }
 
 template <typename T>
-void expect_eq(const std::vector<T>& a, const std::vector<T>& b,
-               const char* msg) {
+inline void expect_eq(const std::vector<T>& a, const std::vector<T>& b,
+                      const char* msg) {
   EXPECT_EQ(a.size(), b.size());
   for (int i = 0; i < a.size(); i++) {
     expect_eq(a[i], b[i], msg);
   }
 }
 
-template <typename T, require_not_st_var<T>* = nullptr>
-void expect_adj_eq(const T& a, const T& b, const char* msg = "expect_ad_eq") {}
+template <typename T, stan::math::require_tuple_t<T>* = nullptr>
+inline void expect_eq(const T& t1, const T& t2, const char* msg) {
+  stan::math::for_each(
+      [&msg](auto&& elt1, auto&& elt2) { expect_eq(elt1, elt2, msg); }, t1, t2);
+}
 
-void expect_adj_eq(math::var a, math::var b, const char* msg = "expect_ad_eq") {
+template <typename T, require_not_st_var<T>* = nullptr>
+inline void expect_adj_eq(const T& a, const T& b,
+                          const char* msg = "expect_ad_eq") {}
+
+inline void expect_adj_eq(math::var a, math::var b,
+                          const char* msg = "expect_ad_eq") {
   EXPECT_EQ(a.adj(), b.adj()) << msg;
 }
 
 template <typename T1, typename T2, require_all_eigen_t<T1, T2>* = nullptr,
           require_vt_same<T1, T2>* = nullptr>
-void expect_adj_eq(const T1& a, const T2& b, const char* msg = "expect_ad_eq") {
+inline void expect_adj_eq(const T1& a, const T2& b,
+                          const char* msg = "expect_ad_eq") {
   EXPECT_EQ(a.rows(), b.rows()) << msg;
   EXPECT_EQ(a.cols(), b.cols()) << msg;
   const auto& a_ref = math::to_ref(a);
@@ -156,15 +200,19 @@ void expect_adj_eq(const T1& a, const T2& b, const char* msg = "expect_ad_eq") {
 }
 
 template <typename T>
-void expect_adj_eq(const std::vector<T>& a, const std::vector<T>& b,
-                   const char* msg = "expect_ad_eq") {
+inline void expect_adj_eq(const std::vector<T>& a, const std::vector<T>& b,
+                          const char* msg = "expect_ad_eq") {
   EXPECT_EQ(a.size(), b.size()) << msg;
   for (int i = 0; i < a.size(); i++) {
     expect_adj_eq(a[i], b[i], msg);
   }
 }
 
-void grad(stan::math::var& a) { a.grad(); }
+inline void grad(stan::math::var& a) { a.grad(); }
+inline void grad(std::complex<stan::math::var>& a) {
+  a.real().grad();
+  a.imag().grad();
+}
 
 #define TO_STRING_(x) #x
 #define TO_STRING(x) TO_STRING_(x)
@@ -180,7 +228,7 @@ scalar_type_t<T> sum_if_number(const T& a) {
   return recursive_sum(a);
 }
 template <typename T, require_not_st_stan_scalar<T>* = nullptr>
-double sum_if_number(const T& a) {
+inline double sum_if_number(const T& a) {
   return 0;
 }
 
@@ -275,17 +323,18 @@ auto bad_multiple_evaluations(const T& a) {
  */
 template <typename T>
 auto bad_wrong_value(const T& a) {
-  if (std::is_same<T, plain_type_t<T>>::value) {
+  if constexpr (std::is_same<T, plain_type_t<T>>::value) {
     return a(0, 0);
+  } else {
+    return a(0, 0) + 1;
   }
-
-  return a(0, 0) + 1;
 }
 
 template <typename T>
 auto bad_wrong_derivatives(const T& a) {
   operands_and_partials<ref_type_t<T>> ops(a);
-  if (!is_constant<T>::value && std::is_same<T, plain_type_t<T>>::value) {
+  if constexpr (!is_constant<T>::value
+                && std::is_same<T, plain_type_t<T>>::value) {
     ops.edge1_.partials_[0] = 1234;
   }
   return ops.build(0);

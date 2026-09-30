@@ -1,15 +1,15 @@
 
 #include <stan/math/rev.hpp>
+#include <test/unit/math/rev/util.hpp>
 #include <gtest/gtest.h>
 
-TEST(MathFunctions, ReturnVarMatrix) {
+TEST_F(AgradRev, MathFunctions_ReturnVarMatrix) {
   using stan::return_var_matrix_t;
   using stan::math::var;
   using stan::math::var_value;
   using std::is_same;
   using var_matrix = var_value<Eigen::MatrixXd>;
   using var_vector = var_value<Eigen::VectorXd>;
-  using var_row_vector = var_value<Eigen::RowVectorXd>;
   using matrix_var = Eigen::Matrix<var, -1, -1>;
   using vector_var = Eigen::Matrix<var, -1, 1>;
   using row_vector_var = Eigen::Matrix<var, 1, -1>;

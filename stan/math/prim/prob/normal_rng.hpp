@@ -5,6 +5,7 @@
 #include <stan/math/prim/err.hpp>
 #include <stan/math/prim/fun/scalar_seq_view.hpp>
 #include <stan/math/prim/fun/max_size.hpp>
+#include <stan/math/prim/fun/size_zero.hpp>
 #include <boost/random/normal_distribution.hpp>
 #include <boost/random/variate_generator.hpp>
 
@@ -36,9 +37,13 @@ inline typename VectorBuilder<true, double, T_loc, T_scale>::type normal_rng(
   using boost::variate_generator;
   using T_mu_ref = ref_type_t<T_loc>;
   using T_sigma_ref = ref_type_t<T_scale>;
-  static const char* function = "normal_rng";
+  static constexpr const char* function = "normal_rng";
   check_consistent_sizes(function, "Location parameter", mu, "Scale Parameter",
                          sigma);
+  if (size_zero(mu, sigma)) {
+    return {};
+  }
+
   T_mu_ref mu_ref = mu;
   T_sigma_ref sigma_ref = sigma;
   check_finite(function, "Location parameter", mu_ref);

@@ -3,10 +3,10 @@
 
 #include <stan/math/prim/err.hpp>
 #include <stan/math/prim/fun/Eigen.hpp>
-#include <stan/math/prim/fun/dot_self.hpp>
-#include <stan/math/prim/fun/dot_product.hpp>
-#include <stan/math/prim/fun/mdivide_left_tri_low.hpp>
+#include <stan/math/prim/fun/mdivide_left_tri.hpp>
 #include <stan/math/prim/fun/inv_square.hpp>
+#include <stan/math/prim/fun/crossprod.hpp>
+#include <stan/math/prim/fun/to_ref.hpp>
 
 namespace stan {
 namespace math {
@@ -21,31 +21,22 @@ namespace math {
  *  lower triangular
  */
 template <typename T, require_eigen_t<T>* = nullptr>
-plain_type_t<T> chol2inv(const T& L) {
-  const Eigen::Ref<const plain_type_t<T>>& L_ref = L;
+inline plain_type_t<T> chol2inv(T&& L) {
+  decltype(auto) L_ref = to_ref(std::forward<T>(L));
   check_square("chol2inv", "L", L_ref);
   check_lower_triangular("chol2inv", "L", L_ref);
-  int K = L.rows();
+  int K = L_ref.rows();
   using T_result = plain_type_t<T>;
   if (K == 0) {
-    return L_ref;
+    return std::forward<decltype(L_ref)>(L_ref);
   }
   if (K == 1) {
     T_result X(1, 1);
     X.coeffRef(0) = inv_square(L_ref.coeff(0, 0));
     return X;
   }
-  T_result L_inv = mdivide_left_tri_low(L_ref, T_result::Identity(K, K));
-  T_result X(K, K);
-  for (int k = 0; k < K; ++k) {
-    X.coeffRef(k, k) = dot_self(L_inv.col(k).tail(K - k).eval());
-    for (int j = k + 1; j < K; ++j) {
-      int Kmj = K - j;
-      X.coeffRef(k, j) = X.coeffRef(j, k) = dot_product(
-          L_inv.col(k).tail(Kmj).eval(), L_inv.col(j).tail(Kmj).eval());
-    }
-  }
-  return X;
+  return crossprod(
+      mdivide_left_tri<Eigen::Lower>(std::forward<decltype(L_ref)>(L_ref)));
 }
 
 }  // namespace math

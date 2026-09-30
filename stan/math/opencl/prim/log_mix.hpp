@@ -37,7 +37,7 @@ template <typename T_theta_cl, typename T_lambda_cl,
           require_all_prim_or_rev_kernel_expression_t<T_theta_cl,
                                                       T_lambda_cl>* = nullptr>
 inline auto log_mix(const T_theta_cl& theta, const T_lambda_cl& lambda) {
-  static const char* function = "log_mix(OpenCL)";
+  static constexpr const char* function = "log_mix(OpenCL)";
   using T_return = return_type_t<T_theta_cl, T_lambda_cl>;
   using std::isfinite;
   using std::isnan;
@@ -90,27 +90,25 @@ inline auto log_mix(const T_theta_cl& theta, const T_lambda_cl& lambda) {
   matrix_cl<double> logp_vec;
   matrix_cl<double> logp_sum;
   results(logp_vec, logp_sum) = expressions(
-      calc_if<!is_constant_all<T_theta_cl, T_lambda_cl>::value>(logp_vec_expr),
+      calc_if<is_any_autodiff_v<T_theta_cl, T_lambda_cl>>(logp_vec_expr),
       colwise_sum(logp_vec_expr));
 
-  operands_and_partials<decltype(theta_col), decltype(lambda)> ops_partials(
-      theta_col, lambda);
-  if (!is_constant_all<T_theta_cl, T_lambda_cl>::value) {
+  auto ops_partials = make_partials_propagator(theta_col, lambda);
+  if constexpr (is_any_autodiff_v<T_theta_cl, T_lambda_cl>) {
     auto derivs_expr = exp(lambda_val - colwise_broadcast(transpose(logp_vec)));
-    if (!is_constant<T_lambda_cl>::value) {
+    if constexpr (is_autodiff_v<T_lambda_cl>) {
       auto lambda_deriv_expr = elt_multiply(derivs_expr, theta_bc);
       matrix_cl<double> derivs;
       matrix_cl<double> lambda_deriv;
-      results(derivs, lambda_deriv)
-          = expressions(calc_if<!is_constant<T_theta_cl>::value>(derivs_expr),
-                        lambda_deriv_expr);
+      results(derivs, lambda_deriv) = expressions(
+          calc_if<is_autodiff_v<T_theta_cl>>(derivs_expr), lambda_deriv_expr);
 
-      ops_partials.edge2_.partials_ = std::move(lambda_deriv);
-      if (!is_constant<T_theta_cl>::value) {
-        ops_partials.edge1_.partials_ = rowwise_sum(derivs);
+      partials<1>(ops_partials) = std::move(lambda_deriv);
+      if constexpr (is_autodiff_v<T_theta_cl>) {
+        partials<0>(ops_partials) = rowwise_sum(derivs);
       }
-    } else if (!is_constant<T_theta_cl>::value) {
-      ops_partials.edge1_.partials_ = rowwise_sum(derivs_expr);
+    } else if constexpr (is_autodiff_v<T_theta_cl>) {
+      partials<0>(ops_partials) = rowwise_sum(derivs_expr);
     }
   }
   return ops_partials.build(sum(from_matrix_cl(logp_sum)));

@@ -48,7 +48,8 @@ namespace math {
  *            If equal to 1, the algorithm computes exact Newton steps.
  * @param[in] global_line_search does the solver use a global line search?
  *            If equal to KIN_NONE, no, if KIN_LINESEARCH, yes.
- * @return x_solution Vector of solutions to the system of equations.
+ * @param[in, out] msgs the print stream for warning messages
+ * @param args Extra arguments passed unmodified through to DAE right hand side
  * @throw <code>std::invalid_argument</code> if Kinsol returns a negative
  *        flag when setting up the solver.
  * @throw <code>std::domain_error</code> if Kinsol fails to solve
@@ -57,14 +58,15 @@ namespace math {
  *        negative flag that is not due to hitting max_num_steps.
  */
 template <typename F1, typename... Args>
-Eigen::VectorXd kinsol_solve(const F1& f, const Eigen::VectorXd& x,
-                             const double scaling_step_tol,    // = 1e-3
-                             const double function_tolerance,  // = 1e-6
-                             const int64_t max_num_steps,      // = 200
-                             const bool custom_jacobian,       // = 1
-                             const int steps_eval_jacobian,    // = 10
-                             const int global_line_search,  // = KIN_LINESEARCH
-                             std::ostream* const msgs, const Args&... args) {
+inline Eigen::VectorXd kinsol_solve(
+    const F1& f, const Eigen::VectorXd& x,
+    const double scaling_step_tol,    // = 1e-3
+    const double function_tolerance,  // = 1e-6
+    const int64_t max_num_steps,      // = 200
+    const bool custom_jacobian,       // = 1
+    const int steps_eval_jacobian,    // = 10
+    const int global_line_search,     // = KIN_LINESEARCH
+    std::ostream* const msgs, const Args&... args) {
   int N = x.size();
   typedef kinsol_system_data<F1, Args...> system_data;
   system_data kinsol_data(f, x, msgs, args...);

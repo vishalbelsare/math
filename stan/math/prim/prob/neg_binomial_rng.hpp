@@ -5,6 +5,7 @@
 #include <stan/math/prim/err.hpp>
 #include <stan/math/prim/fun/constants.hpp>
 #include <stan/math/prim/fun/max_size.hpp>
+#include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/scalar_seq_view.hpp>
 #include <boost/random/gamma_distribution.hpp>
 #include <boost/random/poisson_distribution.hpp>
@@ -39,11 +40,16 @@ inline typename VectorBuilder<true, int, T_shape, T_inv>::type neg_binomial_rng(
   using boost::random::poisson_distribution;
   using T_alpha_ref = ref_type_t<T_shape>;
   using T_beta_ref = ref_type_t<T_inv>;
-  static const char* function = "neg_binomial_rng";
+  static constexpr const char* function = "neg_binomial_rng";
   check_consistent_sizes(function, "Shape parameter", alpha,
                          "Inverse scale Parameter", beta);
   T_alpha_ref alpha_ref = alpha;
   T_beta_ref beta_ref = beta;
+
+  if (size_zero(alpha, beta)) {
+    return {};
+  }
+
   check_positive_finite(function, "Shape parameter", alpha_ref);
   check_positive_finite(function, "Inverse scale parameter", beta_ref);
 

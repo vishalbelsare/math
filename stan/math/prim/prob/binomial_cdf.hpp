@@ -10,7 +10,7 @@
 #include <stan/math/prim/fun/size.hpp>
 #include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <cmath>
 
 namespace stan {
@@ -33,15 +33,15 @@ namespace math {
  * @throw std::invalid_argument if container sizes mismatch
  */
 template <typename T_n, typename T_N, typename T_prob>
-return_type_t<T_prob> binomial_cdf(const T_n& n, const T_N& N,
-                                   const T_prob& theta) {
+inline return_type_t<T_prob> binomial_cdf(const T_n& n, const T_N& N,
+                                          const T_prob& theta) {
   using T_partials_return = partials_return_t<T_n, T_N, T_prob>;
   using T_n_ref = ref_type_t<T_n>;
   using T_N_ref = ref_type_t<T_N>;
   using T_theta_ref = ref_type_t<T_prob>;
   using std::exp;
   using std::pow;
-  static const char* function = "binomial_cdf";
+  static constexpr const char* function = "binomial_cdf";
   check_consistent_sizes(function, "Successes variable", n,
                          "Population size parameter", N,
                          "Probability parameter", theta);
@@ -59,7 +59,7 @@ return_type_t<T_prob> binomial_cdf(const T_n& n, const T_N& N,
   }
 
   T_partials_return P(1.0);
-  operands_and_partials<T_theta_ref> ops_partials(theta_ref);
+  auto ops_partials = make_partials_propagator(theta_ref);
 
   scalar_seq_view<T_n_ref> n_vec(n_ref);
   scalar_seq_view<T_N_ref> N_vec(N_ref);
@@ -90,17 +90,17 @@ return_type_t<T_prob> binomial_cdf(const T_n& n, const T_N& N,
 
     P *= Pi;
 
-    if (!is_constant_all<T_prob>::value) {
+    if constexpr (is_autodiff_v<T_prob>) {
       const T_partials_return denom = beta(N_dbl - n_dbl, n_dbl + 1) * Pi;
-      ops_partials.edge1_.partials_[i]
-          -= pow(theta_dbl, n_dbl) * pow(1 - theta_dbl, N_dbl - n_dbl - 1)
-             / denom;
+      partials<0>(ops_partials)[i] -= pow(theta_dbl, n_dbl)
+                                      * pow(1 - theta_dbl, N_dbl - n_dbl - 1)
+                                      / denom;
     }
   }
 
-  if (!is_constant_all<T_prob>::value) {
+  if constexpr (is_autodiff_v<T_prob>) {
     for (size_t i = 0; i < stan::math::size(theta); ++i) {
-      ops_partials.edge1_.partials_[i] *= P;
+      partials<0>(ops_partials)[i] *= P;
     }
   }
 

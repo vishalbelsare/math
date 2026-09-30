@@ -11,7 +11,7 @@
 #include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/to_ref.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <cmath>
 
 namespace stan {
@@ -32,14 +32,12 @@ namespace math {
 template <typename T_y, typename T_inv_scale,
           require_all_not_nonscalar_prim_or_rev_kernel_expression_t<
               T_y, T_inv_scale>* = nullptr>
-return_type_t<T_y, T_inv_scale> exponential_cdf(const T_y& y,
-                                                const T_inv_scale& beta) {
+inline return_type_t<T_y, T_inv_scale> exponential_cdf(
+    const T_y& y, const T_inv_scale& beta) {
   using T_partials_return = partials_return_t<T_y, T_inv_scale>;
-  using T_partials_array = Eigen::Array<T_partials_return, Eigen::Dynamic, 1>;
-  using T_y_ref = ref_type_if_t<!is_constant<T_y>::value, T_y>;
-  using T_beta_ref
-      = ref_type_if_t<!is_constant<T_inv_scale>::value, T_inv_scale>;
-  static const char* function = "exponential_cdf";
+  using T_y_ref = ref_type_if_not_constant_t<T_y>;
+  using T_beta_ref = ref_type_if_not_constant_t<T_inv_scale>;
+  static constexpr const char* function = "exponential_cdf";
   T_y_ref y_ref = y;
   T_beta_ref beta_ref = beta;
 
@@ -53,28 +51,28 @@ return_type_t<T_y, T_inv_scale> exponential_cdf(const T_y& y,
     return 1.0;
   }
 
-  operands_and_partials<T_y_ref, T_beta_ref> ops_partials(y_ref, beta_ref);
+  auto ops_partials = make_partials_propagator(y_ref, beta_ref);
 
-  constexpr bool any_derivatives = !is_constant_all<T_y, T_inv_scale>::value;
+  constexpr bool any_derivatives = is_any_autodiff_v<T_y, T_inv_scale>;
   const auto& exp_val = to_ref_if<any_derivatives>(exp(-beta_val * y_val));
   const auto& one_m_exp = to_ref_if<any_derivatives>(1 - exp_val);
 
   T_partials_return cdf(1.0);
-  if (is_vector<T_y>::value || is_vector<T_inv_scale>::value) {
-    cdf = forward_as<T_partials_array>(one_m_exp).prod();
+  if constexpr (is_vector<T_y>::value || is_vector<T_inv_scale>::value) {
+    cdf = one_m_exp.prod();
   } else {
-    cdf = forward_as<T_partials_return>(one_m_exp);
+    cdf = one_m_exp;
   }
 
-  if (any_derivatives) {
-    const auto& rep_deriv = to_ref_if<(
-        !is_constant_all<T_y>::value && !is_constant_all<T_inv_scale>::value)>(
-        exp_val / one_m_exp * cdf);
-    if (!is_constant_all<T_y>::value) {
-      ops_partials.edge1_.partials_ = beta_val * rep_deriv;
+  if constexpr (any_derivatives) {
+    const auto& rep_deriv
+        = to_ref_if<(is_autodiff_v<T_y> && is_autodiff_v<T_inv_scale>)>(
+            exp_val / one_m_exp * cdf);
+    if constexpr (is_autodiff_v<T_y>) {
+      partials<0>(ops_partials) = beta_val * rep_deriv;
     }
-    if (!is_constant_all<T_inv_scale>::value) {
-      ops_partials.edge2_.partials_ = y_val * rep_deriv;
+    if constexpr (is_autodiff_v<T_inv_scale>) {
+      partials<1>(ops_partials) = y_val * rep_deriv;
     }
   }
   return ops_partials.build(cdf);

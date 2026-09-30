@@ -8,7 +8,7 @@
 #include <stan/math/prim/fun/elt_divide.hpp>
 #include <stan/math/prim/fun/elt_multiply.hpp>
 #include <stan/math/opencl/kernel_generator.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 
 namespace stan {
 namespace math {
@@ -36,10 +36,10 @@ template <bool propto, typename T_y_cl, typename T_loc_cl, typename T_scale_cl,
               T_y_cl, T_loc_cl, T_scale_cl, T_shape_cl>* = nullptr,
           require_any_not_stan_scalar_t<T_y_cl, T_loc_cl, T_scale_cl,
                                         T_shape_cl>* = nullptr>
-return_type_t<T_y_cl, T_loc_cl, T_scale_cl, T_shape_cl> pareto_type_2_lpdf(
-    const T_y_cl& y, const T_loc_cl& mu, const T_scale_cl& lambda,
-    const T_shape_cl& alpha) {
-  static const char* function = "pareto_type_2_lpdf(OpenCL)";
+inline return_type_t<T_y_cl, T_loc_cl, T_scale_cl, T_shape_cl>
+pareto_type_2_lpdf(const T_y_cl& y, const T_loc_cl& mu,
+                   const T_scale_cl& lambda, const T_shape_cl& alpha) {
+  static constexpr const char* function = "pareto_type_2_lpdf(OpenCL)";
   using T_partials_return
       = partials_return_t<T_y_cl, T_loc_cl, T_scale_cl, T_shape_cl>;
   using std::isfinite;
@@ -109,28 +109,26 @@ return_type_t<T_y_cl, T_loc_cl, T_scale_cl, T_shape_cl> pareto_type_2_lpdf(
           check_alpha_positive_finite, logp_cl, y_deriv_cl, mu_deriv_cl,
           lambda_deriv_cl, alpha_deriv_cl)
       = expressions(y_ge_mu, lambda_positive_finite, alpha_positive_finite,
-                    logp_expr,
-                    calc_if<!is_constant<T_y_cl>::value>(-deriv_y_mu),
-                    calc_if<!is_constant<T_loc_cl>::value>(deriv_y_mu),
-                    calc_if<!is_constant<T_scale_cl>::value>(deriv_lambda),
-                    calc_if<!is_constant<T_shape_cl>::value>(deriv_alpha));
+                    logp_expr, calc_if<is_autodiff_v<T_y_cl>>(-deriv_y_mu),
+                    calc_if<is_autodiff_v<T_loc_cl>>(deriv_y_mu),
+                    calc_if<is_autodiff_v<T_scale_cl>>(deriv_lambda),
+                    calc_if<is_autodiff_v<T_shape_cl>>(deriv_alpha));
 
   T_partials_return logp = sum(from_matrix_cl(logp_cl));
 
-  operands_and_partials<decltype(y_col), decltype(mu_col), decltype(lambda_col),
-                        decltype(alpha_col)>
-      ops_partials(y_col, mu_col, lambda_col, alpha_col);
-  if (!is_constant<T_y_cl>::value) {
-    ops_partials.edge1_.partials_ = std::move(y_deriv_cl);
+  auto ops_partials
+      = make_partials_propagator(y_col, mu_col, lambda_col, alpha_col);
+  if constexpr (is_autodiff_v<T_y_cl>) {
+    partials<0>(ops_partials) = std::move(y_deriv_cl);
   }
-  if (!is_constant<T_loc_cl>::value) {
-    ops_partials.edge2_.partials_ = std::move(mu_deriv_cl);
+  if constexpr (is_autodiff_v<T_loc_cl>) {
+    partials<1>(ops_partials) = std::move(mu_deriv_cl);
   }
-  if (!is_constant<T_scale_cl>::value) {
-    ops_partials.edge3_.partials_ = std::move(lambda_deriv_cl);
+  if constexpr (is_autodiff_v<T_scale_cl>) {
+    partials<2>(ops_partials) = std::move(lambda_deriv_cl);
   }
-  if (!is_constant<T_shape_cl>::value) {
-    ops_partials.edge4_.partials_ = std::move(alpha_deriv_cl);
+  if constexpr (is_autodiff_v<T_shape_cl>) {
+    partials<3>(ops_partials) = std::move(alpha_deriv_cl);
   }
   return ops_partials.build(logp);
 }

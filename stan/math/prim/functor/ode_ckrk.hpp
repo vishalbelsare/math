@@ -53,8 +53,8 @@ namespace math {
  */
 template <typename F, typename T_y0, typename T_t0, typename T_ts,
           typename... Args, require_eigen_vector_t<T_y0>* = nullptr>
-std::vector<Eigen::Matrix<stan::return_type_t<T_y0, T_t0, T_ts, Args...>,
-                          Eigen::Dynamic, 1>>
+inline std::vector<Eigen::Matrix<stan::return_type_t<T_y0, T_t0, T_ts, Args...>,
+                                 Eigen::Dynamic, 1>>
 ode_ckrk_tol_impl(const char* function_name, const F& f, const T_y0& y0_arg,
                   T_t0 t0, const std::vector<T_ts>& ts,
                   double relative_tolerance, double absolute_tolerance,
@@ -78,7 +78,7 @@ ode_ckrk_tol_impl(const char* function_name, const F& f, const T_y0& y0_arg,
 
   std::tuple<ref_type_t<Args>...> args_ref_tuple(args...);
 
-  apply(
+  math::apply(
       [&](const auto&... args_ref) {
         // Code from https://stackoverflow.com/a/17340003
         std::vector<int> unused_temp{
@@ -101,7 +101,7 @@ ode_ckrk_tol_impl(const char* function_name, const F& f, const T_y0& y0_arg,
 
   using return_t = return_type_t<T_y0, T_t0, T_ts, Args...>;
   // creates basic or coupled system by template specializations
-  auto&& coupled_system = apply(
+  auto&& coupled_system = math::apply(
       [&](const auto&... args_ref) {
         return coupled_ode_system<F, T_y0_t0, ref_type_t<Args>...>(f, y0, msgs,
                                                                    args_ref...);
@@ -127,7 +127,7 @@ ode_ckrk_tol_impl(const char* function_name, const F& f, const T_y0& y0_arg,
       observer_initial_recorded = true;
       return;
     }
-    apply(
+    math::apply(
         [&](const auto&... args_ref) {
           y.emplace_back(ode_store_sensitivities(
               f, coupled_state, y0, t0, ts[time_index], msgs, args_ref...));
@@ -194,8 +194,8 @@ ode_ckrk_tol_impl(const char* function_name, const F& f, const T_y0& y0_arg,
  */
 template <typename F, typename T_y0, typename T_t0, typename T_ts,
           typename... Args, require_eigen_vector_t<T_y0>* = nullptr>
-std::vector<Eigen::Matrix<stan::return_type_t<T_y0, T_t0, T_ts, Args...>,
-                          Eigen::Dynamic, 1>>
+inline std::vector<Eigen::Matrix<stan::return_type_t<T_y0, T_t0, T_ts, Args...>,
+                                 Eigen::Dynamic, 1>>
 ode_ckrk_tol(const F& f, const T_y0& y0_arg, T_t0 t0,
              const std::vector<T_ts>& ts, double relative_tolerance,
              double absolute_tolerance,
@@ -233,15 +233,15 @@ ode_ckrk_tol(const F& f, const T_y0& y0_arg, T_t0 t0,
  * @param y0 Initial state
  * @param t0 Initial time
  * @param ts Times at which to solve the ODE at. All values must be sorted and
- *   greather than t0.
+ *   greater than t0.
  * @param[in, out] msgs the print stream for warning messages
  * @param args Extra arguments passed unmodified through to ODE right hand side
  * @return Solution to ODE at times \p ts
  */
 template <typename F, typename T_y0, typename T_t0, typename T_ts,
           typename... Args, require_eigen_vector_t<T_y0>* = nullptr>
-std::vector<Eigen::Matrix<stan::return_type_t<T_y0, T_t0, T_ts, Args...>,
-                          Eigen::Dynamic, 1>>
+inline std::vector<Eigen::Matrix<stan::return_type_t<T_y0, T_t0, T_ts, Args...>,
+                                 Eigen::Dynamic, 1>>
 ode_ckrk(const F& f, const T_y0& y0, T_t0 t0, const std::vector<T_ts>& ts,
          std::ostream* msgs, const Args&... args) {
   double relative_tolerance = 1e-6;

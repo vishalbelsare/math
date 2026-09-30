@@ -53,8 +53,8 @@ class arena_matrix_cl : public matrix_cl_base {
    */
   template <typename... Args>
   explicit arena_matrix_cl(Args&&... args)
-      : impl_(new internal::arena_matrix_cl_impl<T>(
-            std::forward<Args>(args)...)) {}
+      : impl_(
+          new internal::arena_matrix_cl_impl<T>(std::forward<Args>(args)...)) {}
 
   arena_matrix_cl(const arena_matrix_cl<T>&) = default;
   arena_matrix_cl(arena_matrix_cl<T>&) = default;
@@ -73,17 +73,17 @@ class arena_matrix_cl : public matrix_cl_base {
             require_all_kernel_expressions_and_none_scalar_t<Expr>* = nullptr>
   arena_matrix_cl(Expr&& expression)  // NOLINT(runtime/explicit)
       : impl_(new internal::arena_matrix_cl_impl<T>(
-            std::forward<Expr>(expression))) {}
+          std::forward<Expr>(expression))) {}
 
   /**
    * Implicit conversion operator to `matrix_cl`.
    * @return `matrix_cl` equivalent to `*this`. Returned matrix references the
    * same underlying buffer.
    */
-  operator const matrix_cl<T>&() const {  // NOLINT(runtime/explicit)
+  operator const matrix_cl<T> &() const {  // NOLINT(runtime/explicit)
     return *static_cast<const matrix_cl<T>*>(impl_);
   }
-  operator matrix_cl<T>&() {  // NOLINT(runtime/explicit)
+  operator matrix_cl<T> &() {  // NOLINT(runtime/explicit)
     return *static_cast<matrix_cl<T>*>(impl_);
   }
 
@@ -94,7 +94,7 @@ class arena_matrix_cl : public matrix_cl_base {
   matrix_cl<T> eval() const& { return *impl_; }
   matrix_cl<T> eval() && { return std::move(*impl_); }
 
-  // Wrapers to functions with explicit template parameters are implemented
+  // Wrappers to functions with explicit template parameters are implemented
   // without macros.
   template <matrix_cl_view matrix_view = matrix_cl_view::Entire>
   inline void zeros_strict_tri() {
@@ -145,7 +145,7 @@ class arena_matrix_cl : public matrix_cl_base {
 #undef ARENA_MATRIX_CL_CONST_FUNCTION_WRAPPER
 };
 template <typename T>
-matrix_cl<T>::matrix_cl(const arena_matrix_cl<T>& A)
+inline matrix_cl<T>::matrix_cl(const arena_matrix_cl<T>& A)
     // works like a move constructor, except it does not modify `a`
     : buffer_cl_(A.impl_->buffer_cl_),
       rows_(A.impl_->rows_),

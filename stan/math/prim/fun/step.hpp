@@ -44,7 +44,7 @@ struct step_fun {
    * @return step(y)
    */
   template <typename T>
-  static inline T fun(const T& y) {
+  static inline auto fun(const T& y) {
     return step(y);
   }
 };
@@ -58,8 +58,8 @@ struct step_fun {
  * @return Elementwise step of members of container.
  */
 template <typename T, require_container_t<T>* = nullptr>
-inline auto step(const T& x) {
-  return apply_scalar_unary<step_fun, T>::apply(x);
+inline auto step(T&& x) {
+  return apply_scalar_unary<step_fun, T>::apply(std::forward<T>(x));
 }
 
 }  // namespace math

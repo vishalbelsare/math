@@ -15,14 +15,14 @@
 #include <stan/math/prim/fun/size_zero.hpp>
 #include <stan/math/prim/fun/tgamma.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 #include <cmath>
 
 namespace stan {
 namespace math {
 
 template <typename T_y, typename T_dof, typename T_scale>
-return_type_t<T_y, T_dof, T_scale> scaled_inv_chi_square_lccdf(
+inline return_type_t<T_y, T_dof, T_scale> scaled_inv_chi_square_lccdf(
     const T_y& y, const T_dof& nu, const T_scale& s) {
   using T_partials_return = partials_return_t<T_y, T_dof, T_scale>;
   using std::exp;
@@ -31,7 +31,7 @@ return_type_t<T_y, T_dof, T_scale> scaled_inv_chi_square_lccdf(
   using T_y_ref = ref_type_t<T_y>;
   using T_nu_ref = ref_type_t<T_dof>;
   using T_s_ref = ref_type_t<T_scale>;
-  static const char* function = "scaled_inv_chi_square_lccdf";
+  static constexpr const char* function = "scaled_inv_chi_square_lccdf";
   check_consistent_sizes(function, "Random variable", y,
                          "Degrees of freedom parameter", nu, "Scale parameter",
                          s);
@@ -47,8 +47,7 @@ return_type_t<T_y, T_dof, T_scale> scaled_inv_chi_square_lccdf(
   }
 
   T_partials_return P(0.0);
-  operands_and_partials<T_y_ref, T_nu_ref, T_s_ref> ops_partials(y_ref, nu_ref,
-                                                                 s_ref);
+  auto ops_partials = make_partials_propagator(y_ref, nu_ref, s_ref);
 
   scalar_seq_view<T_y_ref> y_vec(y_ref);
   scalar_seq_view<T_nu_ref> nu_vec(nu_ref);
@@ -63,12 +62,12 @@ return_type_t<T_y, T_dof, T_scale> scaled_inv_chi_square_lccdf(
     }
   }
 
-  VectorBuilder<!is_constant_all<T_dof>::value, T_partials_return, T_dof>
-      gamma_vec(size(nu));
-  VectorBuilder<!is_constant_all<T_dof>::value, T_partials_return, T_dof>
-      digamma_vec(size(nu));
+  VectorBuilder<is_autodiff_v<T_dof>, T_partials_return, T_dof> gamma_vec(
+      math::size(nu));
+  VectorBuilder<is_autodiff_v<T_dof>, T_partials_return, T_dof> digamma_vec(
+      math::size(nu));
 
-  if (!is_constant_all<T_dof>::value) {
+  if constexpr (is_autodiff_v<T_dof>) {
     for (size_t i = 0; i < stan::math::size(nu); i++) {
       const T_partials_return half_nu_dbl = 0.5 * nu_vec.val(i);
       gamma_vec[i] = tgamma(half_nu_dbl);
@@ -98,20 +97,20 @@ return_type_t<T_y, T_dof, T_scale> scaled_inv_chi_square_lccdf(
 
     P += log(Pn);
 
-    if (!is_constant_all<T_y>::value) {
-      ops_partials.edge1_.partials_[n]
+    if constexpr (is_autodiff_v<T_y>) {
+      partials<0>(ops_partials)[n]
           -= half_nu_s2_overx_dbl * y_inv_dbl * gamma_p_deriv / Pn;
     }
-    if (!is_constant_all<T_dof>::value) {
-      ops_partials.edge2_.partials_[n]
+    if constexpr (is_autodiff_v<T_dof>) {
+      partials<1>(ops_partials)[n]
           -= (0.5
                   * grad_reg_inc_gamma(half_nu_dbl, half_nu_s2_overx_dbl,
                                        gamma_vec[n], digamma_vec[n])
               - half_s2_overx_dbl * gamma_p_deriv)
              / Pn;
     }
-    if (!is_constant_all<T_scale>::value) {
-      ops_partials.edge3_.partials_[n]
+    if constexpr (is_autodiff_v<T_scale>) {
+      partials<2>(ops_partials)[n]
           += 2.0 * half_nu_dbl * s_dbl * y_inv_dbl * gamma_p_deriv / Pn;
     }
   }

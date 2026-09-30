@@ -11,6 +11,21 @@ namespace stan {
 namespace math {
 
 /**
+ * Returns the minimum coefficient of the two specified
+ * scalar arguments.
+ *
+ * @tparam T1 type of first argument (must be arithmetic)
+ * @tparam T2 type of second argument (must be arithmetic)
+ * @param x first argument
+ * @param y second argument
+ * @return minimum value of the two arguments
+ */
+template <typename T1, typename T2, require_all_arithmetic_t<T1, T2>* = nullptr>
+inline auto min(T1 x, T2 y) {
+  return std::min(x, y);
+}
+
+/**
  * Returns the minimum coefficient in the specified
  * matrix, vector, row vector or std vector.
  *
@@ -23,14 +38,14 @@ namespace math {
  * scalar type in the container is integer
  */
 template <typename T, require_container_t<T>* = nullptr>
-inline value_type_t<T> min(const T& m) {
-  if (std::is_integral<value_type_t<T>>::value) {
+inline value_type_t<T> min(T&& m) {
+  if constexpr (std::is_integral<value_type_t<T>>::value) {
     check_nonzero_size("min", "int vector", m);
   } else if (m.size() == 0) {
     return INFTY;
   }
-  return apply_vector_unary<T>::reduce(
-      m, [](const auto& x) { return x.minCoeff(); });
+  return apply_vector_unary<T>::reduce(std::forward<T>(m),
+                                       [](auto&& x) { return x.minCoeff(); });
 }
 
 }  // namespace math

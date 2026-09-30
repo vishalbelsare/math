@@ -8,7 +8,7 @@
 #include <stan/math/prim/fun/elt_divide.hpp>
 #include <stan/math/prim/fun/elt_multiply.hpp>
 #include <stan/math/opencl/kernel_generator.hpp>
-#include <stan/math/prim/functor/operands_and_partials.hpp>
+#include <stan/math/prim/functor/partials_propagator.hpp>
 
 namespace stan {
 namespace math {
@@ -31,10 +31,9 @@ template <
     require_all_prim_or_rev_kernel_expression_t<T_y_cl, T_loc_cl,
                                                 T_scale_cl>* = nullptr,
     require_any_not_stan_scalar_t<T_y_cl, T_loc_cl, T_scale_cl>* = nullptr>
-return_type_t<T_y_cl, T_loc_cl, T_scale_cl> gumbel_cdf(const T_y_cl& y,
-                                                       const T_loc_cl& mu,
-                                                       const T_scale_cl& beta) {
-  static const char* function = "gumbel_cdf(OpenCL)";
+inline return_type_t<T_y_cl, T_loc_cl, T_scale_cl> gumbel_cdf(
+    const T_y_cl& y, const T_loc_cl& mu, const T_scale_cl& beta) {
+  static constexpr const char* function = "gumbel_cdf(OpenCL)";
   using T_partials_return = partials_return_t<T_y_cl, T_loc_cl, T_scale_cl>;
   using std::isfinite;
   using std::isnan;
@@ -68,8 +67,7 @@ return_type_t<T_y_cl, T_loc_cl, T_scale_cl> gumbel_cdf(const T_y_cl& y,
   auto exp_m_scaled_diff = exp(-scaled_diff);
   auto cdf_n = exp(-exp_m_scaled_diff);
   auto cdf_expr = colwise_prod(cdf_n);
-  auto rep_deriv = elt_divide(exp(-scaled_diff - exp_m_scaled_diff),
-                              elt_multiply(beta_val, cdf_n));
+  auto rep_deriv = elt_divide(exp_m_scaled_diff, beta_val);
 
   matrix_cl<double> cdf_cl;
   matrix_cl<double> y_deriv_cl;
@@ -80,34 +78,31 @@ return_type_t<T_y_cl, T_loc_cl, T_scale_cl> gumbel_cdf(const T_y_cl& y,
           mu_deriv_cl, beta_deriv_cl)
       = expressions(
           y_not_nan_expr, mu_finite_expr, beta_positive_expr, cdf_expr,
-          calc_if<!is_constant_all<T_y_cl, T_loc_cl, T_scale_cl>::value>(
-              rep_deriv),
-          calc_if<!is_constant<T_scale_cl>::value>(scaled_diff));
+          calc_if<is_any_autodiff_v<T_y_cl, T_loc_cl, T_scale_cl>>(rep_deriv),
+          calc_if<is_autodiff_v<T_scale_cl>>(scaled_diff));
 
   T_partials_return cdf = (from_matrix_cl(cdf_cl)).prod();
 
   auto y_deriv = elt_multiply(cdf, mu_deriv_cl);
   auto mu_deriv = -y_deriv;
-  auto beta_deriv
-      = elt_multiply(static_select<is_constant<T_scale_cl>::value>(0, mu_deriv),
-                     beta_deriv_cl);
+  auto beta_deriv = elt_multiply(
+      static_select<is_constant_v<T_scale_cl>>(0, mu_deriv), beta_deriv_cl);
 
   results(y_deriv_cl, mu_deriv_cl, beta_deriv_cl)
-      = expressions(calc_if<!is_constant<T_y_cl>::value>(y_deriv),
-                    calc_if<!is_constant<T_loc_cl>::value>(mu_deriv),
-                    calc_if<!is_constant<T_scale_cl>::value>(beta_deriv));
+      = expressions(calc_if<is_autodiff_v<T_y_cl>>(y_deriv),
+                    calc_if<is_autodiff_v<T_loc_cl>>(mu_deriv),
+                    calc_if<is_autodiff_v<T_scale_cl>>(beta_deriv));
 
-  operands_and_partials<decltype(y_col), decltype(mu_col), decltype(beta_col)>
-      ops_partials(y_col, mu_col, beta_col);
+  auto ops_partials = make_partials_propagator(y_col, mu_col, beta_col);
 
-  if (!is_constant<T_y_cl>::value) {
-    ops_partials.edge1_.partials_ = std::move(y_deriv_cl);
+  if constexpr (is_autodiff_v<T_y_cl>) {
+    partials<0>(ops_partials) = std::move(y_deriv_cl);
   }
-  if (!is_constant<T_loc_cl>::value) {
-    ops_partials.edge2_.partials_ = std::move(mu_deriv_cl);
+  if constexpr (is_autodiff_v<T_loc_cl>) {
+    partials<1>(ops_partials) = std::move(mu_deriv_cl);
   }
-  if (!is_constant<T_scale_cl>::value) {
-    ops_partials.edge3_.partials_ = std::move(beta_deriv_cl);
+  if constexpr (is_autodiff_v<T_scale_cl>) {
+    partials<2>(ops_partials) = std::move(beta_deriv_cl);
   }
   return ops_partials.build(cdf);
 }

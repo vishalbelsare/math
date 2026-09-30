@@ -10,10 +10,9 @@ namespace math {
 
 /**
  * Return the eigenvalues of the specified symmetric matrix
- * in descending order of magnitude.  This function is more
+ * in ascending order of magnitude.  This function is more
  * efficient than the general eigenvalues function for symmetric
  * matrices.
- * <p>See <code>eigen_decompose()</code> for more information.
  *
  * @tparam EigMat type of the matrix
  * @param m Specified matrix.
@@ -21,15 +20,16 @@ namespace math {
  */
 template <typename EigMat, require_eigen_matrix_dynamic_t<EigMat>* = nullptr,
           require_not_st_var<EigMat>* = nullptr>
-Eigen::Matrix<value_type_t<EigMat>, Eigen::Dynamic, 1> eigenvalues_sym(
-    const EigMat& m) {
+inline Eigen::Matrix<value_type_t<EigMat>, -1, 1> eigenvalues_sym(EigMat&& m) {
+  if (unlikely(m.size() == 0)) {
+    return Eigen::Matrix<value_type_t<EigMat>, -1, 1>(0, 1);
+  }
   using PlainMat = plain_type_t<EigMat>;
-  const PlainMat& m_eval = m;
-  check_nonzero_size("eigenvalues_sym", "m", m_eval);
-  check_symmetric("eigenvalues_sym", "m", m_eval);
+  decltype(auto) m_ref = to_ref(std::forward<EigMat>(m));
+  check_symmetric("eigenvalues_sym", "m", m_ref);
 
-  Eigen::SelfAdjointEigenSolver<PlainMat> solver(m_eval,
-                                                 Eigen::EigenvaluesOnly);
+  Eigen::SelfAdjointEigenSolver<PlainMat> solver(
+      std::forward<decltype(m_ref)>(m_ref), Eigen::EigenvaluesOnly);
   return solver.eigenvalues();
 }
 

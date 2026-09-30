@@ -2,9 +2,9 @@
 #define STAN_MATH_REV_FUN_SINGULAR_VALUES_HPP
 
 #include <stan/math/prim/fun/Eigen.hpp>
-#include <stan/math/prim/err/check_nonzero_size.hpp>
 #include <stan/math/rev/meta.hpp>
 #include <stan/math/rev/core.hpp>
+#include <stan/math/prim/err/check_nonzero_size.hpp>
 
 namespace stan {
 namespace math {
@@ -22,7 +22,9 @@ namespace math {
 template <typename EigMat, require_rev_matrix_t<EigMat>* = nullptr>
 inline auto singular_values(const EigMat& m) {
   using ret_type = return_var_matrix_t<Eigen::VectorXd, EigMat>;
-  check_nonzero_size("singular_values", "m", m);
+  if (unlikely(m.size() == 0)) {
+    return ret_type(Eigen::VectorXd(0));
+  }
 
   auto arena_m = to_arena(m);
 
@@ -35,8 +37,8 @@ inline auto singular_values(const EigMat& m) {
   auto arena_V = to_arena(svd.matrixV());
 
   reverse_pass_callback([arena_m, arena_U, singular_values, arena_V]() mutable {
-    arena_m.adj()
-        += arena_U * singular_values.adj().asDiagonal() * arena_V.transpose();
+    arena_m.adj() += arena_U * singular_values.adj_op().asDiagonal()
+                     * arena_V.transpose();
   });
 
   return ret_type(singular_values);

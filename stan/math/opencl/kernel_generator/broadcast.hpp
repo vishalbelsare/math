@@ -42,10 +42,10 @@ class broadcast_
    */
   explicit broadcast_(T&& a) : base(std::forward<T>(a)) {
     const char* function = "broadcast";
-    if (Colwise) {
+    if constexpr (Colwise) {
       check_size_match(function, "Rows of ", "a", a.rows(), "", "", 1);
     }
-    if (Rowwise) {
+    if constexpr (Rowwise) {
       check_size_match(function, "Columns of ", "a", a.cols(), "", "", 1);
     }
   }
@@ -61,16 +61,16 @@ class broadcast_
   }
 
   /**
-   * Sets index/indices along broadcasted dimmension(s) to 0.
+   * Sets index/indices along broadcasted dimension(s) to 0.
    * @param[in, out] row_index_name row index
    * @param[in, out] col_index_name column index
    */
   inline void modify_argument_indices(std::string& row_index_name,
                                       std::string& col_index_name) const {
-    if (Colwise) {
+    if constexpr (Colwise) {
       row_index_name = "0";
     }
-    if (Rowwise) {
+    if constexpr (Rowwise) {
       col_index_name = "0";
     }
   }
@@ -98,7 +98,6 @@ class broadcast_
    * @return pair of indices - bottom and top diagonal
    */
   inline std::pair<int, int> extreme_diagonals() const {
-    int bottom, top;
     std::pair<int, int> arg_diags
         = this->template get_arg<0>().extreme_diagonals();
     return {Colwise ? std::numeric_limits<int>::min() : arg_diags.first,
@@ -130,7 +129,7 @@ inline auto broadcast(T&& a) {
 }
 
 /**
- * Broadcast an expression in rowwise dimmension. The argument must have single
+ * Broadcast an expression in rowwise dimension. The argument must have single
  * column. Further expressions can use this expression as if it had any number
  * of columns, repeating the values.
  *
@@ -148,7 +147,7 @@ inline auto rowwise_broadcast(T&& a) {
 }
 
 /**
- * Broadcast an expression in colwise dimmension. The argument must have single
+ * Broadcast an expression in colwise dimension. The argument must have single
  * row. Further expressions can use this expression as if it had any number of
  * rows, repeating the values.
  *
